@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@wam/shared": ["../shared/src"],
+      "@wam/shared/*": ["../shared/src/*"]
+    }
+  }
+}

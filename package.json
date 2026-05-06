@@ -1,0 +1,8 @@
+{
+  "name": "webflow-access-manager",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/desktop"
+  ]
+}

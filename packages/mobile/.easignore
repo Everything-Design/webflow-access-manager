@@ -1,0 +1,17 @@
+# EAS Build ignore — shadows .gitignore during EAS uploads.
+# We explicitly include _shared/ (generated copy of @wam/shared) so EAS can bundle it.
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+.metro-health-check*
+*.orig.*
+.DS_Store
+.env*.local
+*.tsbuildinfo
+/ios
+/android
+
+# NOTE: _shared/ is intentionally NOT ignored — it's required for the build.

@@ -1,0 +1,43 @@
+{
+  "name": "@wam/desktop",
+  "version": "1.0.0",
+  "description": "Webflow Access Manager — Desktop (Electron)",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "unset ELECTRON_RUN_AS_NODE && vite",
+    "build": "tsc && vite build",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:mac:arm64": "npm run build && electron-builder --mac --arm64",
+    "build:mac:x64": "npm run build && electron-builder --mac --x64",
+    "build:win": "npm run build && electron-builder --win",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "Everythingflow",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@wam/shared": "*",
+    "auto-launch": "^5.0.6",
+    "electron-store": "^8.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/auto-launch": "^5.0.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  }
+}

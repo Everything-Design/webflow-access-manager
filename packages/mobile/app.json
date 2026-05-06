@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Webflow Access Manager",
+    "slug": "webflow-access-manager",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "wam",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f6f6f6"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.everythingflow.wam"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f6f6f6"
+      },
+      "package": "com.everythingflow.wam",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#007AFF"
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1a0222e7-d38a-4a66-a6d4-f5378b442dd2"
+      }
+    },
+    "owner": "saurabh_es"
+  }
+}
