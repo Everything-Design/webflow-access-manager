@@ -2,16 +2,16 @@
 
 Coordinate Webflow account access with your team.
 
+> **Latest release: [v1.0.0](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.0.0)**
+
 ---
 
-## macOS — `.dmg` ✅ Ready
+## macOS
 
-Two builds available (download whichever matches your Mac):
+Pick the build that matches your Mac:
 
-- **Apple Silicon (M1/M2/M3/M4)** — `Webflow Access Manager 1.0.0 arm64.dmg` (114 MB)
-- **Intel Mac** — `Webflow Access Manager 1.0.0 x64.dmg` (119 MB)
-
-Both are at: [packages/desktop/release/](packages/desktop/release/)
+- **Apple Silicon (M1/M2/M3/M4)** — [Download arm64 .dmg (114 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.arm64.dmg)
+- **Intel Mac** — [Download x64 .dmg (119 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.x64.dmg)
 
 ### Install
 1. Open the `.dmg` file
@@ -26,14 +26,12 @@ Not notarized through Apple ($99/year). Standard macOS security check — the ap
 
 ---
 
-## Windows — `.exe` ✅ Ready
+## Windows
 
-Two options:
+Pick whichever is more convenient:
 
-- **Installer** — `Webflow Access Manager Setup 1.0.0.exe` (91 MB) — recommended
-- **Portable** — `Webflow Access Manager 1.0.0 Portable.exe` (91 MB) — no install, run from anywhere
-
-Both are at: [packages/desktop/release/](packages/desktop/release/)
+- **Installer (recommended)** — [Download Setup .exe (91 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.Setup.1.0.0.exe)
+- **Portable** — [Download Portable .exe (91 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.Portable.exe) — no install, run from anywhere
 
 ### Install
 1. Open the downloaded `.exe`
@@ -94,16 +92,6 @@ Whichever platform you use, the flow is the same:
 4. Once you're in, you'll see your team's Webflow account slots
 
 The same email signs you in across all your devices. Profile and workspaces sync automatically.
-
----
-
-## Hosting the binaries
-
-The `.dmg` and `.exe` files are at `packages/desktop/release/` locally. To distribute:
-
-- **Easiest**: Upload to **GitHub Releases** of this repo. Free, permanent download URLs.
-- **Alternative**: Host on your own website (e.g. everything.design)
-- **Don't email**: Files are 90-120 MB, too big for email attachments.
 
 ---
 
