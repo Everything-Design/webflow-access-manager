@@ -4,6 +4,7 @@ import { getAuth, Auth } from 'firebase/auth'
 
 export interface FirebaseConfig {
   apiKey: string
+  authDomain?: string
   projectId: string
   storageBucket?: string
   messagingSenderId?: string

@@ -8,8 +8,11 @@ import {
   nativeTheme,
   screen,
   Menu,
+  session,
 } from 'electron'
 import path from 'path'
+import fs from 'fs'
+import crypto from 'crypto'
 
 let tray: Tray | null = null
 let popupWindow: BrowserWindow | null = null
@@ -54,6 +57,8 @@ function createPopupWindow() {
       preload: getPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      devTools: isDev,
     },
   })
 
@@ -100,6 +105,8 @@ function createDashboardWindow() {
       preload: getPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      devTools: isDev,
     },
   })
 
@@ -196,7 +203,7 @@ function createTray() {
       label: 'Quit Webflow Access Manager',
       accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
       click: () => {
-        app.exit(0)
+        app.quit()
       },
     },
   ])
@@ -213,7 +220,7 @@ ipcMain.on('open-dashboard', () => {
 })
 
 ipcMain.on('quit-app', () => {
-  app.exit(0)
+  app.quit()
 })
 
 ipcMain.on('hide-popup', () => {
@@ -239,8 +246,19 @@ ipcMain.handle('get-platform', () => process.platform)
 ipcMain.handle('get-dark-mode', () => nativeTheme.shouldUseDarkColors)
 
 ipcMain.handle('get-device-id', () => {
-  const os = require('os')
-  return os.hostname()
+  const idPath = path.join(app.getPath('userData'), 'device-id')
+  try {
+    if (fs.existsSync(idPath)) {
+      const stored = fs.readFileSync(idPath, 'utf8').trim()
+      if (stored) return stored
+    }
+    const fresh = crypto.randomUUID()
+    fs.writeFileSync(idPath, fresh, 'utf8')
+    return fresh
+  } catch (err) {
+    console.error('[Main] Failed to read/write device id:', err)
+    return crypto.randomUUID()
+  }
 })
 
 // Listen for system theme changes
@@ -302,6 +320,28 @@ function setupAppMenu() {
 app.on('ready', () => {
   console.log('[Main] App ready. Dev mode:', isDev)
   console.log('[Main] Dev server URL:', DEV_SERVER_URL)
+
+  // Content Security Policy — restricts what the renderer can load.
+  // Firebase needs https/wss to googleapis.com & firebaseio.com; Vite HMR needs ws://localhost in dev.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp =
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.googleapis.com https://*.gstatic.com" +
+      (isDev ? " 'unsafe-eval' http://localhost:* ws://localhost:*; " : '; ') +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' data: https://fonts.gstatic.com; " +
+      "img-src 'self' data: https: blob:; " +
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com" +
+      (isDev ? ' http://localhost:* ws://localhost:*; ' : '; ') +
+      "frame-src https://*.firebaseapp.com https://accounts.google.com;"
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    })
+  })
+
   setupAppMenu()
   createTray()
   createPopupWindow()

@@ -2,20 +2,30 @@ import { ref, get, set, update, remove, onValue, serverTimestamp, Unsubscribe } 
 import { getDb } from './firebase'
 import type { User, Workspace, WorkspaceMember, UserRole } from '../types/models'
 
-// Generate a short, shareable workspace ID (e.g., "EF-7X3K9")
+// Generate a short, shareable workspace ID (e.g., "EF-7X3K9PR").
+// 8 chars from a 32-char alphabet = 32^8 ≈ 1.1 trillion combinations — collisions effectively zero.
 function generateWorkspaceId(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no I/O/0/1 to avoid confusion
   let id = ''
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     id += chars[Math.floor(Math.random() * chars.length)]
   }
   return `${id.slice(0, 2)}-${id.slice(2)}`
 }
 
+async function generateUniqueWorkspaceId(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateWorkspaceId()
+    const snap = await get(ref(getDb(), `workspaces/${candidate}/meta`))
+    if (!snap.exists()) return candidate
+  }
+  throw new Error('Failed to generate a unique workspace ID. Please try again.')
+}
+
 // ─── Create Workspace ───
 
 export async function createWorkspace(name: string, user: User): Promise<string> {
-  const wsId = generateWorkspaceId()
+  const wsId = await generateUniqueWorkspaceId()
 
   try {
     // Write workspace meta
@@ -114,20 +124,22 @@ export async function getUserWorkspaces(userId: string): Promise<Workspace[]> {
     if (!indexSnap.exists()) return []
 
     const wsIds = Object.keys(indexSnap.val())
-    const workspaces: Workspace[] = []
+    const metaSnaps = await Promise.all(
+      wsIds.map((wsId) => get(ref(getDb(), `workspaces/${wsId}/meta`)))
+    )
 
-    for (const wsId of wsIds) {
-      const metaSnap = await get(ref(getDb(), `workspaces/${wsId}/meta`))
-      if (metaSnap.exists()) {
-        const meta = metaSnap.val()
+    const workspaces: Workspace[] = []
+    metaSnaps.forEach((snap, i) => {
+      if (snap.exists()) {
+        const meta = snap.val()
         workspaces.push({
-          id: wsId,
+          id: wsIds[i],
           name: meta.name,
           ownerId: meta.ownerId,
           createdAt: meta.createdAt ?? 0,
         })
       }
-    }
+    })
 
     return workspaces
   } catch (error) {

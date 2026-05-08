@@ -3,6 +3,7 @@ import type { User } from '../types/models'
 import * as firebaseService from '../services/firebaseService'
 import * as authFirebase from '../services/authFirebase'
 import { getPlatform } from '../platform/adapters'
+import type { Unsubscribe } from 'firebase/auth'
 
 const STORAGE_KEY = 'webflow_current_user'
 
@@ -13,6 +14,7 @@ export interface AuthState {
 
   // Initialize — listens for Firebase Auth state, restores profile from local cache
   init: () => void
+  cleanup: () => void
   signUp: (email: string, password: string, name: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
@@ -21,12 +23,17 @@ export interface AuthState {
   updateUser: (updates: Partial<Pick<User, 'name' | 'profileIcon' | 'profileColor'>>) => Promise<void>
 }
 
+let authUnsubscribe: Unsubscribe | null = null
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: null,
   isAuthenticated: false,
   isLoading: true,
 
   init: () => {
+    // Idempotent — calling init twice should not register two listeners
+    if (authUnsubscribe) return
+
     // First, restore cached profile for instant UI
     getPlatform().storage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
@@ -43,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     })
 
     // Then, listen for Firebase Auth changes (handles session persistence, token refresh)
-    authFirebase.onAuthChanged(async (firebaseUser) => {
+    authUnsubscribe = authFirebase.onAuthChanged(async (firebaseUser) => {
       if (firebaseUser) {
         // Firebase Auth session exists — sync profile from database
         const { storage, device } = getPlatform()
@@ -87,6 +94,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
     })
+  },
+
+  cleanup: () => {
+    if (authUnsubscribe) {
+      authUnsubscribe()
+      authUnsubscribe = null
+    }
   },
 
   signUp: async (email, password, name) => {

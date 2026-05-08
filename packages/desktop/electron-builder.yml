@@ -1,6 +1,7 @@
 appId: com.everythingflow.webflow-access-manager
 productName: Webflow Access Manager
 copyright: © 2026 Everythingflow
+electronVersion: 38.8.6
 
 directories:
   output: release

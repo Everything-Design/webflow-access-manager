@@ -4,6 +4,7 @@ import {
   set,
   update,
   remove,
+  runTransaction,
   serverTimestamp,
   onDisconnect,
   Unsubscribe,
@@ -61,12 +62,24 @@ export function observeAccounts(wsId: string, callback: (accounts: Account[]) =>
 
 export async function claimAccount(wsId: string, accountId: string, user: User): Promise<void> {
   try {
-    await update(ref(getDb(), wsPath(wsId, `accounts/${accountId}`)), {
-      isOccupied: true,
-      occupiedBy: user.id,
-      occupiedByName: user.name,
-      occupiedSince: serverTimestamp(),
-    })
+    const result = await runTransaction(
+      ref(getDb(), wsPath(wsId, `accounts/${accountId}`)),
+      (current) => {
+        if (current === null) return current
+        if (current.isOccupied === true) return undefined
+        return {
+          ...current,
+          isOccupied: true,
+          occupiedBy: user.id,
+          occupiedByName: user.name,
+          occupiedSince: Date.now(),
+        }
+      },
+      { applyLocally: false }
+    )
+    if (!result.committed) {
+      throw new Error('This account was just claimed by someone else.')
+    }
   } catch (error) {
     console.error('[Firebase] Failed to claim account:', error)
     throw error
@@ -193,14 +206,15 @@ export function observeUsers(callback: (users: User[]) => void): Unsubscribe {
 
 export async function registerUser(user: User): Promise<void> {
   try {
-    await set(ref(getDb(), `users/${user.id}`), {
+    // update() preserves nested keys (e.g. /users/{uid}/workspaces) which set() would wipe
+    await update(ref(getDb(), `users/${user.id}`), {
       id: user.id,
       name: user.name,
       isOnline: true,
       lastSeen: serverTimestamp(),
-      ...(user.email && { email: user.email }),
-      ...(user.profileIcon && { profileIcon: user.profileIcon }),
-      ...(user.profileColor && { profileColor: user.profileColor }),
+      email: user.email ?? null,
+      profileIcon: user.profileIcon ?? null,
+      profileColor: user.profileColor ?? null,
     })
     await onDisconnect(ref(getDb(), `users/${user.id}/isOnline`)).set(false)
   } catch (error) {

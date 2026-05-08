@@ -10,6 +10,7 @@ import { WorkspaceSetup } from './pages/WorkspaceSetup'
 configurePlatform(electronAdapters)
 initFirebase({
   apiKey: 'AIzaSyDeKYyDJe226JvamBZi_n6XRxDDfU6Qve0',
+  authDomain: 'webflow-team-login.firebaseapp.com',
   projectId: 'webflow-team-login',
   storageBucket: 'webflow-team-login.firebasestorage.app',
   messagingSenderId: '1069127337276',

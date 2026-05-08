@@ -2,7 +2,7 @@
 
 Coordinate Webflow account access with your team.
 
-> **Latest release: [v1.0.0](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.0.0)**
+> **Latest release: [v1.1.0](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.1.0)**
 
 ---
 
@@ -10,8 +10,8 @@ Coordinate Webflow account access with your team.
 
 Pick the build that matches your Mac:
 
-- **Apple Silicon (M1/M2/M3/M4)** — [Download arm64 .dmg (114 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.arm64.dmg)
-- **Intel Mac** — [Download x64 .dmg (119 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.x64.dmg)
+- **Apple Silicon (M1/M2/M3/M4)** — [Download arm64 .dmg (124 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.1.0/Webflow.Access.Manager.1.1.0.arm64.dmg)
+- **Intel Mac** — [Download x64 .dmg (129 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.1.0/Webflow.Access.Manager.1.1.0.x64.dmg)
 
 ### Install
 1. Open the `.dmg` file
@@ -30,8 +30,8 @@ Not notarized through Apple ($99/year). Standard macOS security check — the ap
 
 Pick whichever is more convenient:
 
-- **Installer (recommended)** — [Download Setup .exe (91 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.Setup.1.0.0.exe)
-- **Portable** — [Download Portable .exe (91 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.0.0/Webflow.Access.Manager.1.0.0.Portable.exe) — no install, run from anywhere
+- **Installer (recommended)** — [Download Setup .exe (104 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.1.0/Webflow.Access.Manager.Setup.1.1.0.exe)
+- **Portable** — [Download Portable .exe (104 MB)](https://github.com/Everything-Design/webflow-access-manager/releases/download/v1.1.0/Webflow.Access.Manager.1.1.0.Portable.exe) — no install, run from anywhere
 
 ### Install
 1. Open the downloaded `.exe`

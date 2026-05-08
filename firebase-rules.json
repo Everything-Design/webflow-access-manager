@@ -1,0 +1,50 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $userId",
+        "workspaces": {
+          ".read": "auth != null && auth.uid === $userId",
+          ".write": "auth != null && auth.uid === $userId"
+        }
+      }
+    },
+
+    "workspaces": {
+      "$wsId": {
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid)"
+        },
+
+        "members": {
+          ".read": "auth != null && data.child(auth.uid).exists()",
+
+          "$memberId": {
+            ".read": "auth != null && auth.uid === $memberId",
+            ".write": "auth != null && (auth.uid === $memberId || root.child('workspaces').child($wsId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('workspaces').child($wsId).child('members').child(auth.uid).child('role').val() === 'admin')"
+          }
+        },
+
+        "accounts": {
+          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
+        },
+
+        "clientAccounts": {
+          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
+        },
+
+        "accessRequests": {
+          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}
