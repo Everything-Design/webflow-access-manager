@@ -11,6 +11,9 @@ export interface AuthState {
   currentUser: User | null
   isAuthenticated: boolean
   isLoading: boolean
+  // Firebase Auth has finished its initial state-restore and we know we have a valid token.
+  // Reads/writes against the database (which need auth.uid) must wait for this flag.
+  isFirebaseReady: boolean
 
   // Initialize — listens for Firebase Auth state, restores profile from local cache
   init: () => void
@@ -29,6 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: null,
   isAuthenticated: false,
   isLoading: true,
+  isFirebaseReady: false,
 
   init: () => {
     // Idempotent — calling init twice should not register two listeners
@@ -78,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         await firebaseService.registerUser(user)
         await storage.setItem(STORAGE_KEY, JSON.stringify(user))
-        set({ currentUser: user, isAuthenticated: true, isLoading: false })
+        set({ currentUser: user, isAuthenticated: true, isLoading: false, isFirebaseReady: true })
         console.log('[Auth] Firebase session active for:', user.name)
       } else {
         // No Firebase Auth session
@@ -87,10 +91,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // Was signed in, now signed out
           const { storage } = getPlatform()
           await storage.removeItem(STORAGE_KEY)
-          set({ currentUser: null, isAuthenticated: false, isLoading: false })
+          set({ currentUser: null, isAuthenticated: false, isLoading: false, isFirebaseReady: true })
           console.log('[Auth] Firebase session ended')
         } else {
-          set({ isLoading: false })
+          set({ isLoading: false, isFirebaseReady: true })
         }
       }
     })

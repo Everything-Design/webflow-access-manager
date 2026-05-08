@@ -26,6 +26,7 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const isFirebaseReady = useAuthStore((s) => s.isFirebaseReady)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
   const currentUser = useAuthStore((s) => s.currentUser)
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId)
@@ -44,12 +45,13 @@ export default function RootLayout() {
   // Request notification permissions
   useEffect(() => { Notifications.requestPermissionsAsync() }, [])
 
-  // Load workspaces after auth
+  // Load workspaces only after Firebase Auth has confirmed the session — otherwise
+  // the database read fires before the auth token is issued and security rules deny it.
   useEffect(() => {
-    if (isAuthenticated && currentUser?.id) {
+    if (isFirebaseReady && isAuthenticated && currentUser?.id) {
       useWorkspaceStore.getState().loadWorkspaces(currentUser.id)
     }
-  }, [isAuthenticated, currentUser?.id])
+  }, [isFirebaseReady, isAuthenticated, currentUser?.id])
 
   // Setup app listeners when workspace is selected
   useEffect(() => {

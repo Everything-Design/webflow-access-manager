@@ -11,6 +11,10 @@ files:
   - dist
   - dist-electron
 
+extraResources:
+  - from: resources/tray-icon.png
+    to: tray-icon.png
+
 # macOS — unsigned, universal (Intel + Apple Silicon)
 mac:
   target:

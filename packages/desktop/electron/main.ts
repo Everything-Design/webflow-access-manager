@@ -32,10 +32,28 @@ function getPreloadPath() {
 }
 
 function getIconPath() {
-  if (isDev) {
-    return path.join(process.cwd(), 'resources', 'tray-icon.png')
-  }
-  return path.join(process.resourcesPath, 'tray-icon.png')
+  // Production: extraResources copy lives at process.resourcesPath/tray-icon.png
+  // Dev: read from the source resources folder
+  const candidate = isDev
+    ? path.join(process.cwd(), 'resources', 'tray-icon.png')
+    : path.join(process.resourcesPath, 'tray-icon.png')
+
+  if (fs.existsSync(candidate)) return candidate
+
+  console.warn('[Main] Tray icon not found at:', candidate)
+  return null
+}
+
+// Inlined fallback: same 22x22 PNG as resources/tray-icon.png, base64-encoded.
+// Used only if the extraResources copy is missing — guarantees a visible tray icon.
+const FALLBACK_TRAY_ICON_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAjUlEQVR4nGNgGGqAkQS1J5DYFtQw' +
+  '+AQeOZwWMDHQCDCi8achsbMIuBbZ1ej6UAyehkWTEREGn8MilsWIx1BiDMdmKG3DmIlWBjMisadh' +
+  'kQdHBIF0jFUfvlRhRIIDz+FKFdNwaCA3VYDDeBo5sT78UgXTqMHIBiNnAgY0QCi54ZTHV9ATU2TC' +
+  'AMEahWoAAOcPE0rOTDR8AAAAAElFTkSuQmCC'
+
+function makePlaceholderIcon(): Buffer {
+  return Buffer.from(FALLBACK_TRAY_ICON_BASE64, 'base64')
 }
 
 function createPopupWindow() {
@@ -174,14 +192,29 @@ function showPopupWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(getIconPath())
-  const trayIcon = icon.resize({ width: 18, height: 18 })
+  const iconPath = getIconPath()
+  let trayIcon: Electron.NativeImage
+
+  if (iconPath) {
+    const icon = nativeImage.createFromPath(iconPath)
+    if (icon.isEmpty()) {
+      console.error('[Main] Tray icon loaded as empty image:', iconPath)
+      // Fall through to placeholder below
+      trayIcon = nativeImage.createFromBuffer(makePlaceholderIcon())
+    } else {
+      trayIcon = icon.resize({ width: 18, height: 18 })
+    }
+  } else {
+    trayIcon = nativeImage.createFromBuffer(makePlaceholderIcon())
+  }
+
   if (process.platform === 'darwin') {
     trayIcon.setTemplateImage(true)
   }
 
   tray = new Tray(trayIcon)
   tray.setToolTip('Webflow Access Manager')
+  console.log('[Main] Tray created with icon:', iconPath ?? '<placeholder>')
 
   // Left-click: toggle popup
   tray.on('click', () => {
