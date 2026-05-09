@@ -13,9 +13,10 @@ export function Onboarding() {
     try {
       await signInWithGoogle()
     } catch (err) {
+      console.error('[Onboarding] Google sign-in failed:', err)
       const msg = err instanceof Error ? err.message : 'Something went wrong'
-      const clean = msg.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim()
-      setError(clean || msg)
+      // Keep the (auth/...) code visible — it's the part that tells you what to fix.
+      setError(msg.replace(/^Firebase:\s*/, ''))
       setIsLoading(false)
     }
   }

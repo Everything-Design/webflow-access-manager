@@ -31,6 +31,33 @@ function getPreloadPath() {
   return path.join(__dirname, 'preload.js')
 }
 
+// Firebase signInWithPopup uses window.open() to open the OAuth popup. Electron 30+ blocks
+// window.open by default — we have to opt the OAuth flow in explicitly. Anything else is denied.
+function handleAuthPopup({ url }: { url: string }):
+  | { action: 'deny' }
+  | { action: 'allow'; overrideBrowserWindowOptions?: Electron.BrowserWindowConstructorOptions } {
+  const allowedHosts = [
+    'https://accounts.google.com',
+    'https://webflow-team-login.firebaseapp.com',
+    'https://apis.google.com',
+  ]
+  if (allowedHosts.some((host) => url.startsWith(host))) {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 500,
+        height: 650,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    }
+  }
+  console.warn('[Main] Blocked window.open to:', url)
+  return { action: 'deny' }
+}
+
 function getIconPath() {
   // On macOS, the "Template" suffix tells Electron to treat the PNG as a template
   // image — it auto-renders for light/dark menu bar and auto-picks the @2x retina
@@ -87,6 +114,8 @@ function createPopupWindow() {
     console.log('[Popup] Page loaded successfully')
   })
 
+  popupWindow.webContents.setWindowOpenHandler(handleAuthPopup)
+
   popupWindow.on('blur', () => {
     // Don't hide if DevTools is focused (dev mode)
     if (isDev && popupWindow?.webContents.isDevToolsFocused()) return
@@ -129,6 +158,8 @@ function createDashboardWindow() {
   dashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`[Dashboard] Failed to load: ${errorCode} - ${errorDescription}`)
   })
+
+  dashboardWindow.webContents.setWindowOpenHandler(handleAuthPopup)
 
   dashboardWindow.once('ready-to-show', () => {
     dashboardWindow?.show()
