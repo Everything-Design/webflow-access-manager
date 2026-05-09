@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useAppStore, useAuthStore, useWorkspaceStore, isAccountAvailable } from '@wam/shared'
+import { useAppStore, useAuthStore, isAccountAvailable } from '@wam/shared'
 import { AccountRow } from '../../components/AccountRow'
 import { ClientAccountRow } from '../../components/ClientAccountRow'
 import { useTheme } from '../../utils/theme'
@@ -12,7 +12,6 @@ export default function AccountsScreen() {
   const clientAccounts = useAppStore((s) => s.clientAccounts)
   const isConnected = useAppStore((s) => s.isConnected)
   const currentUser = useAuthStore((s) => s.currentUser)
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId)
 
   const availableCount = useMemo(() => accounts.filter(isAccountAvailable).length, [accounts])
   const myAccount = useMemo(
@@ -31,11 +30,11 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const onRefresh = useCallback(() => {
     setRefreshing(true)
-    if (currentUser?.id && currentWorkspaceId) {
-      useAppStore.getState().setupListeners(currentUser.id, currentWorkspaceId)
+    if (currentUser?.id) {
+      useAppStore.getState().setupListeners(currentUser.id)
     }
     setTimeout(() => setRefreshing(false), 1000)
-  }, [currentUser?.id, currentWorkspaceId])
+  }, [currentUser?.id])
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: t.bg }]}>
@@ -70,7 +69,7 @@ export default function AccountsScreen() {
             <Text style={{ fontSize: 28 }}>🔑</Text>
             <Text style={{ fontSize: 13, color: t.text, fontWeight: '500' }}>No accounts yet</Text>
             <Text style={{ fontSize: 11, color: t.textSecondary, textAlign: 'center', maxWidth: 260 }}>
-              Ask an admin to add accounts to this workspace.
+              Ask the admin to add accounts.
             </Text>
           </View>
         ) : (

@@ -8,13 +8,13 @@ import type { Unsubscribe } from 'firebase/database'
 export interface AppState {
   accounts: Account[]
   clientAccounts: ClientAccount[]
-  users: User[]
+  team: User[]
   accessRequests: AccessRequest[]
   pendingRequestsForCurrentUser: AccessRequest[]
+  pendingTeamMembers: User[]
   isConnected: boolean
 
-  // wsId is now required for all workspace-scoped operations
-  setupListeners: (userId: string, wsId: string) => void
+  setupListeners: (userId: string) => void
   removeListeners: () => void
 
   claimAccount: (account: Account, user: User) => Promise<void>
@@ -29,50 +29,56 @@ export interface AppState {
   releaseAccountForRequest: (request: AccessRequest, responseNote?: string) => Promise<void>
   rejectRequest: (requestId: string, responseNote?: string) => Promise<void>
   cancelRequest: (requestId: string) => Promise<void>
+
+  approveTeamMember: (uid: string) => Promise<void>
+  rejectTeamMember: (uid: string) => Promise<void>
+  removeTeamMember: (uid: string) => Promise<void>
 }
 
 let unsubscribers: Unsubscribe[] = []
-let activeWsId: string | null = null
 
 export const useAppStore = create<AppState>((set, get) => ({
   accounts: [],
   clientAccounts: [],
-  users: [],
+  team: [],
   accessRequests: [],
   pendingRequestsForCurrentUser: [],
+  pendingTeamMembers: [],
   isConnected: false,
 
-  setupListeners: (userId, wsId) => {
+  setupListeners: (userId) => {
     get().removeListeners()
-    activeWsId = wsId
-    console.log('[AppStore] Setting up listeners for workspace:', wsId)
+    console.log('[AppStore] Setting up listeners for user:', userId)
 
     unsubscribers.push(
       firebaseService.observeConnection((connected) => set({ isConnected: connected }))
     )
 
     unsubscribers.push(
-      firebaseService.observeAccounts(wsId, (accounts) => set({ accounts }))
+      firebaseService.observeAccounts((accounts) => set({ accounts }))
     )
 
     unsubscribers.push(
-      firebaseService.observeClientAccounts(wsId, (clientAccounts) => set({ clientAccounts }))
+      firebaseService.observeClientAccounts((clientAccounts) => set({ clientAccounts }))
     )
 
     unsubscribers.push(
-      firebaseService.observeUsers((users) => set({ users }))
+      firebaseService.observeTeam((team) => {
+        set({
+          team,
+          pendingTeamMembers: team.filter((m) => m.status === 'pending'),
+        })
+      })
     )
 
     unsubscribers.push(
-      firebaseService.observeAccessRequests(wsId, (allRequests) => {
+      firebaseService.observeAccessRequests((allRequests) => {
         const previous = get().accessRequests
 
-        // Pending requests where I'm the OWNER (someone wants my account)
         const incomingPending = allRequests.filter(
           (r) => r.ownerId === userId && r.status === 'pending'
         )
 
-        // Notify owner of NEW incoming requests
         const previousIncomingIds = new Set(
           previous.filter((r) => r.ownerId === userId && r.status === 'pending').map((r) => r.id)
         )
@@ -87,15 +93,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
 
-        // Detect outgoing request status transitions (notify requester when approved/rejected)
         const previousById = new Map(previous.map((r) => [r.id, r]))
         for (const request of allRequests) {
           if (request.requesterId !== userId) continue
           const before = previousById.get(request.id)
-          if (!before) continue // brand new — not a transition
-          if (before.status !== 'pending') continue // wasn't pending before
-          if (request.status === 'pending') continue // still pending
-          // Status transitioned out of 'pending'
+          if (!before) continue
+          if (before.status !== 'pending') continue
+          if (request.status === 'pending') continue
           const accountName = request.accountLabel ?? request.accountId
           if (request.status === 'released' || request.status === 'approved') {
             getPlatform().notification.send(
@@ -112,7 +116,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
 
-        // Store only pending requests in accessRequests (UI uses this for "active request" checks)
         const pending = allRequests.filter((r) => r.status === 'pending')
         set({
           accessRequests: pending,
@@ -125,26 +128,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeListeners: () => {
     for (const unsub of unsubscribers) unsub()
     unsubscribers = []
-    activeWsId = null
   },
 
-  // All actions use the active workspace ID
-
   claimAccount: async (account, user) => {
-    if (!activeWsId) return
-    await firebaseService.claimAccount(activeWsId, account.id, user)
+    await firebaseService.claimAccount(account.id, user)
   },
 
   releaseAccount: async (accountId) => {
-    if (!activeWsId) return
-    await firebaseService.releaseAccount(activeWsId, accountId)
-    // Auto-resolve any pending requests for this account — the requester will get notified
+    await firebaseService.releaseAccount(accountId)
     const stalePending = get().accessRequests.filter(
       (r) => r.accountId === accountId && r.status === 'pending'
     )
     for (const req of stalePending) {
       try {
-        await firebaseService.updateAccessRequestStatus(activeWsId, req.id, 'released')
+        await firebaseService.updateAccessRequestStatus(req.id, 'released')
       } catch (err) {
         console.warn('[AppStore] Failed to auto-resolve stale request:', req.id, err)
       }
@@ -152,27 +149,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createAccountSlot: async (accountId, label) => {
-    if (!activeWsId) return
-    await firebaseService.createAccountSlot(activeWsId, accountId, label)
+    await firebaseService.createAccountSlot(accountId, label)
   },
 
   deleteAccountSlot: async (accountId) => {
-    if (!activeWsId) return
-    await firebaseService.deleteAccountSlot(activeWsId, accountId)
+    await firebaseService.deleteAccountSlot(accountId)
   },
 
   setClientAccount: async (clientName, user) => {
-    if (!activeWsId) return
-    await firebaseService.setClientAccount(activeWsId, clientName, user)
+    await firebaseService.setClientAccount(clientName, user)
   },
 
   clearClientAccount: async (clientAccountId) => {
-    if (!activeWsId) return
-    await firebaseService.clearClientAccount(activeWsId, clientAccountId)
+    await firebaseService.clearClientAccount(clientAccountId)
   },
 
   requestAccess: async (account, user, note) => {
-    if (!activeWsId || !account.occupiedBy || !account.occupiedByName) return
+    if (!account.occupiedBy || !account.occupiedByName) return
     const request: AccessRequest = {
       id: generateId(),
       requesterId: user.id,
@@ -185,20 +178,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       requestedAt: Date.now() / 1000,
       ...(note && note.trim() && { requesterNote: note.trim() }),
     }
-    await firebaseService.createAccessRequest(activeWsId, request)
+    await firebaseService.createAccessRequest(request)
   },
 
   releaseAccountForRequest: async (request, responseNote) => {
-    if (!activeWsId) return
-    await firebaseService.releaseAccount(activeWsId, request.accountId)
-    await firebaseService.updateAccessRequestStatus(activeWsId, request.id, 'released', responseNote)
-    // Clean up any OTHER pending requests for the same account
+    await firebaseService.releaseAccount(request.accountId)
+    await firebaseService.updateAccessRequestStatus(request.id, 'released', responseNote)
     const otherPending = get().accessRequests.filter(
       (r) => r.accountId === request.accountId && r.id !== request.id && r.status === 'pending'
     )
     for (const r of otherPending) {
       try {
-        await firebaseService.updateAccessRequestStatus(activeWsId, r.id, 'released')
+        await firebaseService.updateAccessRequestStatus(r.id, 'released')
       } catch (err) {
         console.warn('[AppStore] Failed to auto-resolve sibling request:', r.id, err)
       }
@@ -206,12 +197,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   rejectRequest: async (requestId, responseNote) => {
-    if (!activeWsId) return
-    await firebaseService.updateAccessRequestStatus(activeWsId, requestId, 'rejected', responseNote)
+    await firebaseService.updateAccessRequestStatus(requestId, 'rejected', responseNote)
   },
 
   cancelRequest: async (requestId) => {
-    if (!activeWsId) return
-    await firebaseService.deleteAccessRequest(activeWsId, requestId)
+    await firebaseService.deleteAccessRequest(requestId)
+  },
+
+  approveTeamMember: async (uid) => {
+    await firebaseService.updateMemberStatus(uid, 'approved')
+  },
+
+  rejectTeamMember: async (uid) => {
+    await firebaseService.updateMemberStatus(uid, 'rejected')
+  },
+
+  removeTeamMember: async (uid) => {
+    await firebaseService.removeTeamMember(uid)
   },
 }))

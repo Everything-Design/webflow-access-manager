@@ -11,19 +11,16 @@ export interface AuthState {
   currentUser: User | null
   isAuthenticated: boolean
   isLoading: boolean
-  // Firebase Auth has finished its initial state-restore and we know we have a valid token.
-  // Reads/writes against the database (which need auth.uid) must wait for this flag.
   isFirebaseReady: boolean
 
-  // Initialize — listens for Firebase Auth state, restores profile from local cache
   init: () => void
   cleanup: () => void
-  signUp: (email: string, password: string, name: string) => Promise<void>
-  signIn: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
-  // Update profile (name, icon, color)
   updateUser: (updates: Partial<Pick<User, 'name' | 'profileIcon' | 'profileColor'>>) => Promise<void>
+  // Subscribe to your own /team/{uid} record so status changes (admin approve/reject)
+  // propagate to the running app immediately, with no need for a refresh.
+  subscribeOwnStatus: () => () => void
 }
 
 let authUnsubscribe: Unsubscribe | null = null
@@ -35,10 +32,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isFirebaseReady: false,
 
   init: () => {
-    // Idempotent — calling init twice should not register two listeners
     if (authUnsubscribe) return
 
-    // First, restore cached profile for instant UI
     getPlatform().storage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
         try {
@@ -53,46 +48,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     })
 
-    // Then, listen for Firebase Auth changes (handles session persistence, token refresh)
     authUnsubscribe = authFirebase.onAuthChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Firebase Auth session exists — sync profile from database
         const { storage, device } = getPlatform()
         const deviceId = await device.getDeviceId()
 
-        const user: User = {
+        const cached = get().currentUser
+        const baseUser: Omit<User, 'status'> = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || '',
+          name: firebaseUser.displayName || cached?.name || '',
           email: firebaseUser.email || undefined,
           deviceId,
           isOnline: true,
           lastSeen: Date.now() / 1000,
-          // Preserve existing profile customizations from cache
-          ...(() => {
-            const { currentUser } = get()
-            if (currentUser?.id === firebaseUser.uid) {
-              return {
-                profileIcon: currentUser.profileIcon,
-                profileColor: currentUser.profileColor,
-              }
-            }
-            return {}
-          })(),
+          ...(cached?.id === firebaseUser.uid && {
+            profileIcon: cached.profileIcon,
+            profileColor: cached.profileColor,
+          }),
         }
 
-        await firebaseService.registerUser(user)
+        // Creates with status='pending' on first sign-in; preserves status on subsequent sign-ins.
+        await firebaseService.registerTeamMember(baseUser)
+
+        // After registration, the live status comes from Firebase. The subscription
+        // (subscribeOwnStatus) updates currentUser.status as the admin acts.
+        const user: User = { ...baseUser, status: cached?.status ?? 'pending' }
         await storage.setItem(STORAGE_KEY, JSON.stringify(user))
         set({ currentUser: user, isAuthenticated: true, isLoading: false, isFirebaseReady: true })
         console.log('[Auth] Firebase session active for:', user.name)
       } else {
-        // No Firebase Auth session
-        const { currentUser } = get()
-        if (currentUser) {
-          // Was signed in, now signed out
-          const { storage } = getPlatform()
-          await storage.removeItem(STORAGE_KEY)
+        const cached = get().currentUser
+        if (cached) {
+          await getPlatform().storage.removeItem(STORAGE_KEY)
           set({ currentUser: null, isAuthenticated: false, isLoading: false, isFirebaseReady: true })
-          console.log('[Auth] Firebase session ended')
         } else {
           set({ isLoading: false, isFirebaseReady: true })
         }
@@ -107,27 +95,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signUp: async (email, password, name) => {
-    const trimmedName = name.trim()
-    const trimmedEmail = email.trim().toLowerCase()
-    if (!trimmedName) throw new Error('Name is required')
-    if (!trimmedEmail) throw new Error('Email is required')
-    if (password.length < 6) throw new Error('Password must be at least 6 characters')
-
-    // Firebase Auth creates the account — onAuthChanged will fire and sync the profile
-    await authFirebase.signUpWithEmail(trimmedEmail, password, trimmedName)
-  },
-
-  signIn: async (email, password) => {
-    const trimmedEmail = email.trim().toLowerCase()
-    if (!trimmedEmail) throw new Error('Email is required')
-
-    // Firebase Auth signs in — onAuthChanged will fire and sync the profile
-    await authFirebase.signInWithEmail(trimmedEmail, password)
-  },
-
   signInWithGoogle: async () => {
-    // Google popup handles everything — onAuthChanged will fire and sync the profile
     await authFirebase.signInWithGoogle()
   },
 
@@ -141,17 +109,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     await authFirebase.signOutFirebase()
-    // onAuthChanged listener will clear state
   },
 
   updateUser: async (updates) => {
-    const { storage } = getPlatform()
     const { currentUser } = get()
     if (!currentUser) return
 
     const updated: User = { ...currentUser, ...updates }
-    await firebaseService.registerUser(updated)
-    await storage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    await firebaseService.updateMemberProfile(currentUser.id, updates)
+    await getPlatform().storage.setItem(STORAGE_KEY, JSON.stringify(updated))
     set({ currentUser: updated })
+  },
+
+  subscribeOwnStatus: () => {
+    const { currentUser } = get()
+    if (!currentUser) return () => {}
+
+    return firebaseService.observeOwnTeamRecord(currentUser.id, (me) => {
+      if (!me) return
+      const current = get().currentUser
+      if (!current) return
+      if (current.status !== me.status || current.name !== me.name) {
+        const updated: User = { ...current, status: me.status, name: me.name }
+        set({ currentUser: updated })
+        getPlatform().storage.setItem(STORAGE_KEY, JSON.stringify(updated)).catch(() => {})
+      }
+    })
   },
 }))

@@ -1,6 +1,6 @@
 {
   "name": "@wam/desktop",
-  "version": "1.1.2",
+  "version": "2.0.0",
   "description": "Webflow Access Manager — Desktop (Electron)",
   "main": "dist-electron/main.js",
   "scripts": {

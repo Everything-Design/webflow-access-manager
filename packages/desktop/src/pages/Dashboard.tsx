@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useAppStore, useAuthStore, useWorkspaceStore } from '@wam/shared'
+import { useAppStore, useAuthStore, useAdminStore } from '@wam/shared'
 import { AccountRow } from '../components/AccountRow'
 import { ClientAccountRow } from '../components/ClientAccountRow'
 import { AccessRequestRow } from '../components/AccessRequestRow'
@@ -29,9 +29,8 @@ export function Dashboard() {
   const [clientName, setClientName] = useState('')
   const [newSlotLabel, setNewSlotLabel] = useState('')
 
-  const myRole = useWorkspaceStore((s) => s.myRole)
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace)
-  const isAdmin = myRole === 'owner' || myRole === 'admin'
+  const adminUid = useAdminStore((s) => s.adminUid)
+  const isAdmin = currentUser?.id === adminUid
 
   const handleAddClient = async () => {
     if (!clientName.trim() || !currentUser) return
@@ -73,7 +72,7 @@ export function Dashboard() {
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <StatusDot color={isConnected ? 'green' : 'red'} size="md" />
                   <span className="text-caption text-text-secondary">
-                    {currentWorkspace?.name ?? 'No workspace'}
+                    {isConnected ? 'Connected' : 'Offline'}
                   </span>
                 </div>
               </>

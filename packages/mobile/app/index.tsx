@@ -1,14 +1,16 @@
 import { Redirect } from 'expo-router'
-import { useAuthStore, useWorkspaceStore } from '@wam/shared'
+import { useAuthStore, useAdminStore } from '@wam/shared'
 
 export default function Index() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId)
-  const userWorkspaces = useWorkspaceStore((s) => s.userWorkspaces)
-  const isWsLoading = useWorkspaceStore((s) => s.isLoading)
+  const isFirebaseReady = useAuthStore((s) => s.isFirebaseReady)
+  const currentUser = useAuthStore((s) => s.currentUser)
+  const adminUid = useAdminStore((s) => s.adminUid)
+  const adminLoaded = useAdminStore((s) => s.isLoaded)
 
   if (!isAuthenticated) return <Redirect href="/onboarding" />
-  if (isWsLoading) return null // _layout shows spinner
-  if (userWorkspaces.length === 0 || !currentWorkspaceId) return <Redirect href="/workspace-setup" />
+  if (!isFirebaseReady || !adminLoaded) return null
+  if (adminUid === null) return <Redirect href="/claim-admin" />
+  if (currentUser?.status !== 'approved') return <Redirect href="/pending-approval" />
   return <Redirect href="/(tabs)/accounts" />
 }

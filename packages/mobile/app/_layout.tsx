@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { ActivityIndicator, View, AppState as RNAppState } from 'react-native'
 import { Slot } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { configurePlatform, initFirebase, useAuthStore, useAppStore, useWorkspaceStore, firebaseService } from '@wam/shared'
+import { configurePlatform, initFirebase, useAuthStore, useAppStore, useAdminStore, firebaseService } from '@wam/shared'
 import { mobileAdapters } from '../adapters/mobileAdapters'
 
 configurePlatform(mobileAdapters)
@@ -21,6 +21,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 })
 
@@ -29,57 +31,45 @@ export default function RootLayout() {
   const isFirebaseReady = useAuthStore((s) => s.isFirebaseReady)
   const isAuthLoading = useAuthStore((s) => s.isLoading)
   const currentUser = useAuthStore((s) => s.currentUser)
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId)
-  const isWsLoading = useWorkspaceStore((s) => s.isLoading)
-  const members = useWorkspaceStore((s) => s.members)
+  const subscribeOwnStatus = useAuthStore((s) => s.subscribeOwnStatus)
   const hasInitRef = useRef(false)
 
-  // Initialize auth
   useEffect(() => {
     if (!hasInitRef.current) {
       hasInitRef.current = true
       useAuthStore.getState().init()
+      useAdminStore.getState().start()
     }
   }, [])
 
-  // Request notification permissions
+  // Notification permissions
   useEffect(() => { Notifications.requestPermissionsAsync() }, [])
 
-  // Load workspaces only after Firebase Auth has confirmed the session — otherwise
-  // the database read fires before the auth token is issued and security rules deny it.
+  // Mirror own /team/{uid} status into the store
   useEffect(() => {
-    if (isFirebaseReady && isAuthenticated && currentUser?.id) {
-      useWorkspaceStore.getState().loadWorkspaces(currentUser.id)
-    }
-  }, [isFirebaseReady, isAuthenticated, currentUser?.id])
+    if (!isFirebaseReady || !isAuthenticated || !currentUser?.id) return
+    return subscribeOwnStatus()
+  }, [isFirebaseReady, isAuthenticated, currentUser?.id, subscribeOwnStatus])
 
-  // Setup app listeners when workspace is selected
+  // Subscribe to app data only when approved
   useEffect(() => {
-    if (isAuthenticated && currentUser?.id && currentWorkspaceId) {
-      useAppStore.getState().setupListeners(currentUser.id, currentWorkspaceId)
-      return () => useAppStore.getState().removeListeners()
-    }
-  }, [isAuthenticated, currentUser?.id, currentWorkspaceId])
-
-  // Derive role from members
-  useEffect(() => {
-    if (currentUser?.id && members.length > 0) {
-      const me = members.find((m) => m.userId === currentUser.id)
-      if (me) useWorkspaceStore.setState({ myRole: me.role })
-    }
-  }, [members, currentUser?.id])
+    if (!isFirebaseReady || !isAuthenticated || !currentUser?.id) return
+    if (currentUser.status !== 'approved') return
+    useAppStore.getState().setupListeners(currentUser.id)
+    return () => useAppStore.getState().removeListeners()
+  }, [isFirebaseReady, isAuthenticated, currentUser?.id, currentUser?.status])
 
   // App lifecycle presence
   useEffect(() => {
-    if (!currentUser?.id) return
+    if (!currentUser?.id || currentUser.status !== 'approved') return
     const sub = RNAppState.addEventListener('change', (state) => {
       if (state === 'active') firebaseService.updateUserPresence(currentUser.id, true)
       else if (state === 'background' || state === 'inactive') firebaseService.updateUserPresence(currentUser.id, false)
     })
     return () => sub.remove()
-  }, [currentUser?.id])
+  }, [currentUser?.id, currentUser?.status])
 
-  if (isAuthLoading || (isAuthenticated && isWsLoading)) {
+  if (isAuthLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f6f6f6' }}>
         <ActivityIndicator size="large" color="#007AFF" />

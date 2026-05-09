@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { StatusDot } from '../components/ui/StatusDot'
 import { Button } from '../components/ui/Button'
 import { useAppStore, useAuthStore, isAccountAvailable, formatDuration, getAccountDisplayName } from '@wam/shared'
-import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher'
 
 export function TrayPopup() {
   const accounts = useAppStore((s) => s.accounts)
@@ -40,7 +39,9 @@ export function TrayPopup() {
               <span className="text-headline">{currentUser.name}</span>
               <div className="flex items-center gap-1.5">
                 <StatusDot color={isConnected ? 'green' : 'red'} size="sm" />
-                <WorkspaceSwitcher />
+                <span className="text-caption2 text-text-secondary">
+                  {isConnected ? 'Connected' : 'Offline'}
+                </span>
               </div>
             </div>
           )}

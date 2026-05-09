@@ -3,48 +3,42 @@
     ".read": false,
     ".write": false,
 
-    "users": {
-      "$userId": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $userId",
-        "workspaces": {
-          ".read": "auth != null && auth.uid === $userId",
-          ".write": "auth != null && auth.uid === $userId"
+    "admin": {
+      ".read": "auth != null",
+      ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid)"
+    },
+
+    "team": {
+      ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
+
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admin/uid').val() === auth.uid)",
+
+        "status": {
+          ".write": "auth != null && (root.child('admin/uid').val() === auth.uid || (auth.uid === $uid && newData.val() === 'pending' && !data.exists()))",
+          ".validate": "newData.val() === 'pending' || newData.val() === 'approved' || newData.val() === 'rejected'"
+        },
+
+        "addedAt": {
+          ".write": "auth != null && auth.uid === $uid && !data.exists()"
         }
       }
     },
 
-    "workspaces": {
-      "$wsId": {
-        "meta": {
-          ".read": "auth != null",
-          ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid)"
-        },
+    "accounts": {
+      ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
+    },
 
-        "members": {
-          ".read": "auth != null && data.child(auth.uid).exists()",
+    "clientAccounts": {
+      ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
+    },
 
-          "$memberId": {
-            ".read": "auth != null && auth.uid === $memberId",
-            ".write": "auth != null && (auth.uid === $memberId || root.child('workspaces').child($wsId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('workspaces').child($wsId).child('members').child(auth.uid).child('role').val() === 'admin')"
-          }
-        },
-
-        "accounts": {
-          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
-          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
-        },
-
-        "clientAccounts": {
-          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
-          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
-        },
-
-        "accessRequests": {
-          ".read": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",
-          ".write": "auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"
-        }
-      }
+    "accessRequests": {
+      ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
+      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
     }
   }
 }

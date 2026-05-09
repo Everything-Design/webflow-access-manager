@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Platform } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { useAuthStore, useAppStore, useWorkspaceStore } from '@wam/shared'
+import { useAuthStore, useAppStore, useAdminStore } from '@wam/shared'
 import { useTheme } from '../../utils/theme'
 
 const ICONS = [
@@ -27,15 +27,16 @@ export default function SettingsScreen() {
   const isConnected = useAppStore((s) => s.isConnected)
   const accounts = useAppStore((s) => s.accounts)
   const clientAccounts = useAppStore((s) => s.clientAccounts)
-  const users = useAppStore((s) => s.users)
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace)
-  const myRole = useWorkspaceStore((s) => s.myRole)
-  const members = useWorkspaceStore((s) => s.members)
-  const memberCount = members.length
+  const team = useAppStore((s) => s.team)
+  const pendingTeamMembers = useAppStore((s) => s.pendingTeamMembers)
+  const approveTeamMember = useAppStore((s) => s.approveTeamMember)
+  const rejectTeamMember = useAppStore((s) => s.rejectTeamMember)
+  const removeTeamMember = useAppStore((s) => s.removeTeamMember)
+  const adminUid = useAdminStore((s) => s.adminUid)
+  const isAdmin = currentUser?.id === adminUid
 
-  const onlineMemberCount = members.filter((m) =>
-    users.some((u) => u.id === m.userId && u.isOnline)
-  ).length
+  const onlineCount = team.filter((m) => m.status === 'approved' && m.isOnline).length
+  const approvedCount = team.filter((m) => m.status === 'approved').length
   const occupiedAccounts = accounts.filter((a) => a.isOccupied).length
   const availableAccounts = accounts.length - occupiedAccounts
 
@@ -60,6 +61,13 @@ export default function SettingsScreen() {
     Alert.alert('Sign Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/onboarding') } },
+    ])
+  }
+
+  const handleRemove = (uid: string, memberName: string) => {
+    Alert.alert(`Remove ${memberName}`, 'They will need to be re-approved if they sign in again.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeTeamMember(uid) },
     ])
   }
 
@@ -113,57 +121,86 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {currentWorkspace && (
+        {/* Pending approvals — admin only */}
+        {isAdmin && pendingTeamMembers.length > 0 && (
           <>
-            <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Workspace</Text>
-            <View style={[s.card, { backgroundColor: t.bgElevated }]}>
-              <Text style={[s.label, { color: t.textSecondary }]}>Name</Text>
-              <Text style={{ fontSize: 15, color: t.text, fontWeight: '500', marginBottom: 10 }}>
-                {currentWorkspace.name}
-              </Text>
-
-              <Text style={[s.label, { color: t.textSecondary }]}>Workspace ID (share to invite)</Text>
-              <TouchableOpacity
-                onPress={() => Alert.alert('Workspace ID', currentWorkspace.id, [{ text: 'OK' }])}
-                style={{ paddingVertical: 4 }}
-              >
-                <Text selectable style={{ fontSize: 18, color: t.accent, fontWeight: '600', letterSpacing: 1, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
-                  {currentWorkspace.id}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={{ marginTop: 12 }}>
-                <Text style={[s.label, { color: t.textSecondary }]}>Your role</Text>
-                <Text style={{ fontSize: 13, color: t.text, textTransform: 'capitalize' }}>{myRole ?? 'member'}</Text>
-              </View>
-            </View>
-
-            {/* Overview */}
-            <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Overview</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
-                <Text style={[s.statLabel, { color: t.textSecondary }]}>MEMBERS</Text>
-                <Text style={[s.statValue, { color: t.text }]}>{memberCount}</Text>
-                <Text style={{ fontSize: 11, color: t.green, marginTop: 2 }}>{onlineMemberCount} online</Text>
-              </View>
-
-              <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
-                <Text style={[s.statLabel, { color: t.textSecondary }]}>INTERNAL</Text>
-                <Text style={[s.statValue, { color: t.text }]}>{accounts.length}</Text>
-                <Text style={{ fontSize: 11, marginTop: 2 }}>
-                  <Text style={{ color: t.green }}>{availableAccounts} free</Text>
-                  <Text style={{ color: t.textSecondary }}> · </Text>
-                  <Text style={{ color: t.red }}>{occupiedAccounts} in use</Text>
-                </Text>
-              </View>
-
-              <View style={[s.statCard, { backgroundColor: t.bgElevated, flexBasis: '100%' }]}>
-                <Text style={[s.statLabel, { color: t.textSecondary }]}>CLIENT ACCOUNTS</Text>
-                <Text style={[s.statValue, { color: t.text }]}>{clientAccounts.length}</Text>
-              </View>
+            <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>
+              Pending approvals ({pendingTeamMembers.length})
+            </Text>
+            <View style={{ gap: 8 }}>
+              {pendingTeamMembers.map((m) => (
+                <View key={m.id} style={[s.card, { backgroundColor: t.bgElevated, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: t.text }}>{m.name || m.email}</Text>
+                    <Text style={{ fontSize: 11, color: t.textSecondary }}>{m.email}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => approveTeamMember(m.id)}
+                      style={{ backgroundColor: t.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => rejectTeamMember(m.id)}
+                      style={{ backgroundColor: t.bg, borderWidth: 1, borderColor: t.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                    >
+                      <Text style={{ color: t.text, fontSize: 12, fontWeight: '500' }}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
             </View>
           </>
         )}
+
+        {/* Team list */}
+        <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>
+          Team ({approvedCount})
+        </Text>
+        <View style={[s.card, { backgroundColor: t.bgElevated, padding: 6 }]}>
+          {team.filter((m) => m.status === 'approved').map((m) => (
+            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, gap: 10 }}>
+              <View style={[s.dot, { backgroundColor: m.isOnline ? t.green : t.textTertiary }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, color: t.text }}>
+                  {m.name}
+                  {m.id === adminUid && <Text style={{ color: t.accent, fontSize: 10 }}>{'  admin'}</Text>}
+                  {m.id === currentUser?.id && <Text style={{ color: t.textSecondary, fontSize: 10 }}>{'  you'}</Text>}
+                </Text>
+                <Text style={{ fontSize: 11, color: t.textTertiary }}>{m.email}</Text>
+              </View>
+              {isAdmin && m.id !== currentUser?.id && (
+                <TouchableOpacity onPress={() => handleRemove(m.id, m.name)}>
+                  <Text style={{ fontSize: 11, color: t.red }}>Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
+
+        {/* Overview */}
+        <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Overview</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
+            <Text style={[s.statLabel, { color: t.textSecondary }]}>TEAM</Text>
+            <Text style={[s.statValue, { color: t.text }]}>{approvedCount}</Text>
+            <Text style={{ fontSize: 11, color: t.green, marginTop: 2 }}>{onlineCount} online</Text>
+          </View>
+          <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
+            <Text style={[s.statLabel, { color: t.textSecondary }]}>INTERNAL</Text>
+            <Text style={[s.statValue, { color: t.text }]}>{accounts.length}</Text>
+            <Text style={{ fontSize: 11, marginTop: 2 }}>
+              <Text style={{ color: t.green }}>{availableAccounts} free</Text>
+              <Text style={{ color: t.textSecondary }}> · </Text>
+              <Text style={{ color: t.red }}>{occupiedAccounts} in use</Text>
+            </Text>
+          </View>
+          <View style={[s.statCard, { backgroundColor: t.bgElevated, flexBasis: '100%' }]}>
+            <Text style={[s.statLabel, { color: t.textSecondary }]}>CLIENT ACCOUNTS</Text>
+            <Text style={[s.statValue, { color: t.text }]}>{clientAccounts.length}</Text>
+          </View>
+        </View>
 
         <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Connection</Text>
         <View style={[s.card, { backgroundColor: t.bgElevated }]}>

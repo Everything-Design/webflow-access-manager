@@ -1,53 +1,28 @@
-import { useState, FormEvent } from 'react'
+import { useState } from 'react'
 import { Button } from '../components/ui/Button'
-import { Input } from '../components/ui/Input'
 import { useAuthStore } from '@wam/shared'
 
-type Mode = 'sign-in' | 'sign-up'
-
 export function Onboarding() {
-  const [mode, setMode] = useState<Mode>('sign-in')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const signIn = useAuthStore((s) => s.signIn)
-  const signUp = useAuthStore((s) => s.signUp)
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle)
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleGoogleSignIn = async () => {
     setIsLoading(true)
     setError(null)
-
     try {
-      if (mode === 'sign-up') {
-        await signUp(email, password, name)
-      } else {
-        await signIn(email, password)
-      }
+      await signInWithGoogle()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong'
-      // Clean up Firebase error messages
-      const clean = msg
-        .replace('Firebase: ', '')
-        .replace(/\(auth\/.*\)\.?/, '')
-        .trim()
+      const clean = msg.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim()
       setError(clean || msg)
       setIsLoading(false)
     }
   }
 
-  const canSubmit = mode === 'sign-up'
-    ? name.trim() && email.trim() && password.length >= 6
-    : email.trim() && password
-
   return (
-    <div className="flex flex-col items-center justify-between h-full px-10 py-10 bg-background-primary">
-      {/* Header */}
-      <div className="flex flex-col items-center gap-3 pt-4">
+    <div className="flex flex-col items-center justify-center h-full px-10 py-10 bg-background-primary gap-8">
+      <div className="flex flex-col items-center gap-3">
         <div className="text-accent-blue">
           <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -56,85 +31,20 @@ export function Onboarding() {
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
         </div>
-        <h1 className="text-title2 text-center">
-          Webflow Access Manager
-        </h1>
+        <h1 className="text-title2 text-center">Webflow Access Manager</h1>
         <p className="text-subheadline text-text-secondary text-center">
-          {mode === 'sign-up'
-            ? 'Create your account to get started'
-            : 'Sign in to your account'}
+          Sign in with Google to coordinate Webflow account access with your team.
         </p>
       </div>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="w-full space-y-3">
-        {mode === 'sign-up' && (
-          <Input
-            label="Your Name"
-            placeholder="Enter your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-          />
-        )}
-
-        <Input
-          label="Email"
-          type="email"
-          placeholder="you@agency.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoFocus={mode === 'sign-in'}
-        />
-
-        <Input
-          label="Password"
-          type="password"
-          placeholder={mode === 'sign-up' ? 'At least 6 characters' : 'Enter password'}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
-        {error && (
-          <p className="text-caption text-accent-red">{error}</p>
-        )}
-
+      <div className="w-full space-y-3">
         <Button
-          type="submit"
+          type="button"
           variant="primary"
           size="lg"
           fullWidth
+          onClick={handleGoogleSignIn}
           loading={isLoading}
-          disabled={!canSubmit}
-        >
-          {mode === 'sign-up' ? 'Create Account' : 'Sign In'}
-        </Button>
-
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <hr className="flex-1 border-divider" />
-          <span className="text-caption2 text-text-tertiary">or</span>
-          <hr className="flex-1 border-divider" />
-        </div>
-
-        {/* Google Sign-In */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="lg"
-          fullWidth
-          onClick={async () => {
-            setIsLoading(true)
-            setError(null)
-            try {
-              await signInWithGoogle()
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : 'Something went wrong'
-              const clean = msg.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim()
-              setError(clean || msg)
-              setIsLoading(false)
-            }
-          }}
           disabled={isLoading}
         >
           <svg width="16" height="16" viewBox="0 0 24 24">
@@ -145,18 +55,9 @@ export function Onboarding() {
           </svg>
           Continue with Google
         </Button>
-      </form>
 
-      {/* Toggle mode */}
-      <button
-        type="button"
-        onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setError(null) }}
-        className="text-caption text-accent-blue hover:underline"
-      >
-        {mode === 'sign-in'
-          ? "Don't have an account? Sign up"
-          : 'Already have an account? Sign in'}
-      </button>
+        {error && <p className="text-caption text-accent-red text-center">{error}</p>}
+      </div>
     </div>
   )
 }

@@ -2,7 +2,12 @@
 
 export type AccessRequestStatus = 'pending' | 'approved' | 'released' | 'rejected' | 'cancelled'
 
-// ─── User ───
+// ─── Team Member Status ───
+// Single-tenant access control — admin approves new sign-ins.
+
+export type TeamMemberStatus = 'pending' | 'approved' | 'rejected'
+
+// ─── User / Team Member ───
 
 export interface User {
   id: string
@@ -13,7 +18,8 @@ export interface User {
   lastSeen: number // seconds since epoch
   profileIcon?: string
   profileColor?: string
-  isAdmin?: boolean // Bug #2 fix: role from Firebase, not hardcoded UUID
+  status: TeamMemberStatus
+  addedAt?: number // seconds since epoch
 }
 
 // ─── Account (Internal Webflow Account Slot) ───
@@ -55,29 +61,7 @@ export interface AccessRequest {
   responseNote?: string
 }
 
-// ─── Workspace ───
-
-export type UserRole = 'owner' | 'admin' | 'member'
-
-export interface Workspace {
-  id: string           // short shareable ID, e.g. "EF-7X3K9"
-  name: string         // agency name
-  ownerId: string      // Firebase Auth UID of creator
-  createdAt: number    // seconds since epoch
-}
-
-export interface WorkspaceMember {
-  userId: string
-  name: string
-  email?: string
-  role: UserRole
-  joinedAt: number     // seconds since epoch
-  profileIcon?: string
-  profileColor?: string
-}
-
 // ─── Helpers ───
-// Bug #5 fix: formatDuration only lives in utils/helpers.ts now
 
 export function isAccountAvailable(account: Account): boolean {
   return !account.isOccupied

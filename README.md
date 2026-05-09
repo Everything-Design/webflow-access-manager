@@ -3,7 +3,7 @@
 A cross-platform team tool to coordinate **shared Webflow account access** for design and development agencies. Stop juggling who's logged in where — claim, release, and request access to your shared Webflow accounts in real time.
 
 > **Want to use it?** → [Download the app](DOWNLOADS.md)
-> **Latest release:** [v1.1.2](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.1.2)
+> **Latest release:** [v2.0.0](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v2.0.0)
 
 ---
 
@@ -29,10 +29,9 @@ Everything syncs across desktop and mobile in real time via Firebase.
 | | |
 |---|---|
 | **Cross-platform** | macOS (Apple Silicon + Intel), Windows, Android (via Expo Go) |
-| **Multi-tenant workspaces** | Each agency gets an isolated workspace with a short shareable ID like `EF-7X3K9` |
-| **Authentication** | Firebase Auth — email/password and Google Sign-In; same identity on every device |
-| **Roles** | Owner, Admin, Member — admins can add/delete account slots, manage members |
-| **Real-time sync** | Firebase Realtime Database — claims and requests update instantly across all devices |
+| **Single-team architecture** | One agency, one team — no workspace setup or IDs to share |
+| **Authentication** | Google SSO. New users land in `pending`; the admin approves them. |
+| **Real-time sync** | Firebase Realtime Database — claims and requests update instantly across devices |
 | **Native notifications** | OS-level alerts on access requests, approvals, and rejections |
 | **Optional notes** | Attach a reason to any request, accept, or decline |
 | **System tray (desktop)** | Lives in your menu bar — popup for quick actions, dashboard for the full view |
