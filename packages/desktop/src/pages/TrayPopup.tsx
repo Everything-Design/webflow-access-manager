@@ -58,9 +58,14 @@ export function TrayPopup() {
 
       {/* Body — pending requests on top, then accounts list */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-        {/* Incoming requests waiting for me */}
-        {pendingRequestsForCurrentUser.length > 0 && (
-          <div>
+        {/* Incoming requests waiting for me — animates in/out so the rest of the popup
+            doesn't jump when a request arrives. grid-rows trick = animate from 0 to auto. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+            pendingRequestsForCurrentUser.length > 0 ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          }`}
+        >
+          <div className="overflow-hidden">
             <p className="text-caption2 text-accent-orange uppercase tracking-wide mb-1.5">
               Waiting for you
             </p>
@@ -75,7 +80,7 @@ export function TrayPopup() {
               ))}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Accounts */}
         <div>
@@ -152,38 +157,52 @@ function PopupAccountRow({
   const available = !account.isOccupied
   const dotColor = isMine ? 'blue' : available ? 'green' : 'red'
 
+  // Always render two text lines so the row height is constant whether the slot is free,
+  // mine, or held by someone else — prevents the row from "jumping" on state changes.
+  const primary = (
+    <>
+      {getAccountDisplayName(account.id, account.label)}
+      {isMine && <span className="text-text-secondary font-normal"> (you)</span>}
+    </>
+  )
+
+  let secondary: React.ReactNode = <span className="text-text-tertiary">Available</span>
+  let secondaryClass = 'text-text-tertiary'
+  if (isMine && account.occupiedSince) {
+    secondary = formatDuration(account.occupiedSince)
+    secondaryClass = 'text-accent-blue'
+  } else if (!available && !isMine && account.occupiedByName) {
+    secondary = (
+      <>
+        {account.occupiedByName}
+        {account.occupiedSince ? ` · ${formatDuration(account.occupiedSince)}` : ''}
+      </>
+    )
+    secondaryClass = 'text-text-tertiary'
+  }
+
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-background-elevated">
+    <div className="flex items-center gap-2 px-2 h-[44px] rounded bg-background-elevated">
       <StatusDot color={dotColor} size="sm" />
       <div className="flex-1 min-w-0">
-        <p className="text-caption font-medium truncate">
-          {getAccountDisplayName(account.id, account.label)}
-          {isMine && <span className="text-text-secondary font-normal"> (you)</span>}
-        </p>
-        {!available && !isMine && account.occupiedByName && (
-          <p className="text-caption2 text-text-tertiary truncate">
-            {account.occupiedByName}
-            {account.occupiedSince ? ` · ${formatDuration(account.occupiedSince)}` : ''}
-          </p>
-        )}
-        {isMine && account.occupiedSince && (
-          <p className="text-caption2 text-accent-blue">{formatDuration(account.occupiedSince)}</p>
-        )}
+        <p className="text-caption font-medium truncate leading-tight">{primary}</p>
+        <p className={`text-caption2 truncate leading-tight ${secondaryClass}`}>{secondary}</p>
       </div>
-      <div className="shrink-0">
+      {/* Fixed-width action slot — every state renders something the same size, so the
+          row never shifts horizontally when the action button changes. */}
+      <div className="shrink-0 w-[68px] flex justify-end">
         {isMine ? (
-          <PopupButton onClick={onRelease}>Release</PopupButton>
+          <PopupButton onClick={onRelease} fullWidth>Release</PopupButton>
         ) : available ? (
-          // Don't let someone claim a second slot if they already hold one
           iAlreadyHaveOne ? (
-            <span className="text-caption2 text-text-tertiary">—</span>
+            <span className="text-caption2 text-text-tertiary leading-[26px]">—</span>
           ) : (
-            <PopupButton onClick={onClaim} variant="primary">Claim</PopupButton>
+            <PopupButton onClick={onClaim} variant="primary" fullWidth>Claim</PopupButton>
           )
         ) : hasMyRequest ? (
-          <PopupButton onClick={onCancelRequest} variant="ghost">Cancel</PopupButton>
+          <PopupButton onClick={onCancelRequest} variant="ghost" fullWidth>Cancel</PopupButton>
         ) : (
-          <PopupButton onClick={onRequest}>Request</PopupButton>
+          <PopupButton onClick={onRequest} fullWidth>Request</PopupButton>
         )}
       </div>
     </div>
@@ -200,16 +219,20 @@ function PendingRow({
   onDecline: () => void
 }) {
   return (
-    <div className="px-2 py-1.5 rounded bg-accent-orange/10 border border-accent-orange/20">
-      <p className="text-caption font-medium truncate">
+    <div className="px-2 py-1.5 rounded bg-accent-orange/10 border border-accent-orange/20 space-y-1">
+      <p className="text-caption font-medium truncate leading-tight">
         {request.requesterName} wants {getAccountDisplayName(request.accountId, request.accountLabel)}
       </p>
-      {request.requesterNote && (
-        <p className="text-caption2 text-text-secondary truncate mb-1.5">
-          "{request.requesterNote}"
-        </p>
-      )}
-      <div className="flex gap-1.5 mt-1">
+      {/* Note line is always rendered to keep the row height constant — falls back to a
+          neutral hint when no note was attached. */}
+      <p
+        className={`text-caption2 truncate leading-tight ${
+          request.requesterNote ? 'text-text-secondary' : 'text-text-tertiary italic'
+        }`}
+      >
+        {request.requesterNote ? `"${request.requesterNote}"` : 'No note attached'}
+      </p>
+      <div className="flex gap-1.5 pt-0.5">
         <PopupButton onClick={onAccept} variant="primary">Hand over</PopupButton>
         <PopupButton onClick={onDecline} variant="ghost">Decline</PopupButton>
       </div>
@@ -221,12 +244,16 @@ function PopupButton({
   children,
   onClick,
   variant = 'secondary',
+  fullWidth = false,
 }: {
   children: React.ReactNode
   onClick: () => void
   variant?: 'primary' | 'secondary' | 'ghost'
+  fullWidth?: boolean
 }) {
-  const base = 'text-caption2 font-medium px-2 py-1 rounded transition-colors whitespace-nowrap'
+  const base =
+    'text-caption2 font-medium px-2 h-[26px] rounded transition-colors whitespace-nowrap text-center'
+  const width = fullWidth ? 'w-full' : ''
   const styles =
     variant === 'primary'
       ? 'bg-accent-blue text-white hover:bg-accent-blue/90'
@@ -234,7 +261,7 @@ function PopupButton({
         ? 'text-text-secondary hover:text-text-primary hover:bg-background-elevated'
         : 'bg-background-elevated text-text-primary hover:bg-background-tertiary border border-border'
   return (
-    <button onClick={onClick} className={`${base} ${styles}`}>
+    <button onClick={onClick} className={`${base} ${width} ${styles}`}>
       {children}
     </button>
   )
