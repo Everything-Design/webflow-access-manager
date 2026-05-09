@@ -32,28 +32,18 @@ function getPreloadPath() {
 }
 
 function getIconPath() {
-  // Production: extraResources copy lives at process.resourcesPath/tray-icon.png
-  // Dev: read from the source resources folder
+  // On macOS, the "Template" suffix tells Electron to treat the PNG as a template
+  // image — it auto-renders for light/dark menu bar and auto-picks the @2x retina
+  // companion next to it. On Windows/Linux, fall back to the colored tray-icon.png.
+  const filename = process.platform === 'darwin' ? 'tray-iconTemplate.png' : 'tray-icon.png'
   const candidate = isDev
-    ? path.join(process.cwd(), 'resources', 'tray-icon.png')
-    : path.join(process.resourcesPath, 'tray-icon.png')
+    ? path.join(process.cwd(), 'resources', filename)
+    : path.join(process.resourcesPath, filename)
 
   if (fs.existsSync(candidate)) return candidate
 
   console.warn('[Main] Tray icon not found at:', candidate)
   return null
-}
-
-// Inlined fallback: same 22x22 PNG as resources/tray-icon.png, base64-encoded.
-// Used only if the extraResources copy is missing — guarantees a visible tray icon.
-const FALLBACK_TRAY_ICON_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAjUlEQVR4nGNgGGqAkQS1J5DYFtQw' +
-  '+AQeOZwWMDHQCDCi8achsbMIuBbZ1ej6UAyehkWTEREGn8MilsWIx1BiDMdmKG3DmIlWBjMisadh' +
-  'kQdHBIF0jFUfvlRhRIIDz+FKFdNwaCA3VYDDeBo5sT78UgXTqMHIBiNnAgY0QCi54ZTHV9ATU2TC' +
-  'AMEahWoAAOcPE0rOTDR8AAAAAElFTkSuQmCC'
-
-function makePlaceholderIcon(): Buffer {
-  return Buffer.from(FALLBACK_TRAY_ICON_BASE64, 'base64')
 }
 
 function createPopupWindow() {
@@ -193,28 +183,26 @@ function showPopupWindow() {
 
 function createTray() {
   const iconPath = getIconPath()
-  let trayIcon: Electron.NativeImage
-
-  if (iconPath) {
-    const icon = nativeImage.createFromPath(iconPath)
-    if (icon.isEmpty()) {
-      console.error('[Main] Tray icon loaded as empty image:', iconPath)
-      // Fall through to placeholder below
-      trayIcon = nativeImage.createFromBuffer(makePlaceholderIcon())
-    } else {
-      trayIcon = icon.resize({ width: 18, height: 18 })
-    }
-  } else {
-    trayIcon = nativeImage.createFromBuffer(makePlaceholderIcon())
+  if (!iconPath) {
+    console.error('[Main] No tray icon found — tray will not be created.')
+    return
   }
 
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    console.error('[Main] Tray icon loaded as empty image:', iconPath)
+    return
+  }
+
+  // The Template suffix in the filename makes macOS auto-handle template rendering;
+  // we still set it explicitly for safety and so the same code works without rename.
   if (process.platform === 'darwin') {
-    trayIcon.setTemplateImage(true)
+    icon.setTemplateImage(true)
   }
 
-  tray = new Tray(trayIcon)
+  tray = new Tray(icon)
   tray.setToolTip('Webflow Access Manager')
-  console.log('[Main] Tray created with icon:', iconPath ?? '<placeholder>')
+  console.log('[Main] Tray created with icon:', iconPath)
 
   // Left-click: toggle popup
   tray.on('click', () => {

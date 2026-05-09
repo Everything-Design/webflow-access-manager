@@ -3,7 +3,7 @@
 A cross-platform team tool to coordinate **shared Webflow account access** for design and development agencies. Stop juggling who's logged in where — claim, release, and request access to your shared Webflow accounts in real time.
 
 > **Want to use it?** → [Download the app](DOWNLOADS.md)
-> **Latest release:** [v1.1.1](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.1.1)
+> **Latest release:** [v1.1.2](https://github.com/Everything-Design/webflow-access-manager/releases/tag/v1.1.2)
 
 ---
 
