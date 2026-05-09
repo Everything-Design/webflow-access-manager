@@ -95,6 +95,19 @@ export function App() {
     return window.electronAPI.onThemeChanged(applyTheme)
   }, [])
 
+  // Live tray status — orange when there's a pending request waiting for me, red when
+  // every account is occupied, green otherwise.
+  const accounts = useAppStore((s) => s.accounts)
+  const pendingForMe = useAppStore((s) => s.pendingRequestsForCurrentUser)
+  useEffect(() => {
+    if (!window.electronAPI?.setTrayStatus) return
+    if (currentUser?.status !== 'approved') return
+    let status: 'green' | 'orange' | 'red' = 'green'
+    if (pendingForMe.length > 0) status = 'orange'
+    else if (accounts.length > 0 && accounts.every((a) => a.isOccupied)) status = 'red'
+    window.electronAPI.setTrayStatus(status)
+  }, [accounts, pendingForMe, currentUser?.status])
+
   return (
     <HashRouter>
       <Routes>

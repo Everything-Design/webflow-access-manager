@@ -18,6 +18,18 @@ extraResources:
     to: tray-iconTemplate@2x.png
   - from: resources/tray-icon.png
     to: tray-icon.png
+  - from: resources/tray-green.png
+    to: tray-green.png
+  - from: resources/tray-green@2x.png
+    to: tray-green@2x.png
+  - from: resources/tray-orange.png
+    to: tray-orange.png
+  - from: resources/tray-orange@2x.png
+    to: tray-orange@2x.png
+  - from: resources/tray-red.png
+    to: tray-red.png
+  - from: resources/tray-red@2x.png
+    to: tray-red@2x.png
 
 # macOS — unsigned, universal (Intel + Apple Silicon)
 mac:

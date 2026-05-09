@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.send('quit-app'),
   hidePopup: () => ipcRenderer.send('hide-popup'),
 
+  // Tray icon — colour signals app state
+  setTrayStatus: (status: 'green' | 'orange' | 'red') =>
+    ipcRenderer.send('set-tray-status', status),
+
   // Notifications
   sendNotification: (payload: { title: string; body: string; requestId?: string }) =>
     ipcRenderer.send('send-notification', payload),

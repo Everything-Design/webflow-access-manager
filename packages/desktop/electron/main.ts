@@ -132,18 +132,19 @@ function handleAuthPopup({ url }: { url: string }):
   return { action: 'deny' }
 }
 
-function getIconPath() {
-  // On macOS, the "Template" suffix tells Electron to treat the PNG as a template
-  // image — it auto-renders for light/dark menu bar and auto-picks the @2x retina
-  // companion next to it. On Windows/Linux, fall back to the colored tray-icon.png.
-  const filename = process.platform === 'darwin' ? 'tray-iconTemplate.png' : 'tray-icon.png'
+type TrayStatus = 'green' | 'orange' | 'red'
+let currentTrayStatus: TrayStatus = 'green'
+
+// Resolves a tray icon by status. macOS auto-picks the @2x companion next to the base file
+// for retina displays, so we only need to point at the 1x path.
+function getStatusIconPath(status: TrayStatus) {
+  const filename = `tray-${status}.png`
   const candidate = isDev
     ? path.join(process.cwd(), 'resources', filename)
     : path.join(process.resourcesPath, filename)
 
   if (fs.existsSync(candidate)) return candidate
-
-  console.warn('[Main] Tray icon not found at:', candidate)
+  console.warn('[Main] Status tray icon not found at:', candidate)
   return null
 }
 
@@ -274,28 +275,38 @@ function showPopupWindow() {
   popupWindow!.focus()
 }
 
+function loadTrayIcon(status: TrayStatus): Electron.NativeImage | null {
+  const iconPath = getStatusIconPath(status)
+  if (!iconPath) return null
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    console.error('[Main] Tray icon loaded empty:', iconPath)
+    return null
+  }
+  // Colored icons must NOT be set as template images, otherwise macOS strips the colour
+  // and renders them black-on-transparent.
+  return icon
+}
+
+function setTrayStatus(status: TrayStatus) {
+  if (!tray) return
+  if (status === currentTrayStatus) return
+  const icon = loadTrayIcon(status)
+  if (!icon) return
+  tray.setImage(icon)
+  currentTrayStatus = status
+}
+
 function createTray() {
-  const iconPath = getIconPath()
-  if (!iconPath) {
+  const icon = loadTrayIcon(currentTrayStatus)
+  if (!icon) {
     console.error('[Main] No tray icon found — tray will not be created.')
     return
   }
 
-  const icon = nativeImage.createFromPath(iconPath)
-  if (icon.isEmpty()) {
-    console.error('[Main] Tray icon loaded as empty image:', iconPath)
-    return
-  }
-
-  // The Template suffix in the filename makes macOS auto-handle template rendering;
-  // we still set it explicitly for safety and so the same code works without rename.
-  if (process.platform === 'darwin') {
-    icon.setTemplateImage(true)
-  }
-
   tray = new Tray(icon)
   tray.setToolTip('Webflow Access Manager')
-  console.log('[Main] Tray created with icon:', iconPath)
+  console.log('[Main] Tray created with status:', currentTrayStatus)
 
   // Left-click: toggle popup
   tray.on('click', () => {
@@ -339,6 +350,12 @@ ipcMain.on('quit-app', () => {
 
 ipcMain.on('hide-popup', () => {
   popupWindow?.hide()
+})
+
+ipcMain.on('set-tray-status', (_event, status: TrayStatus) => {
+  if (status === 'green' || status === 'orange' || status === 'red') {
+    setTrayStatus(status)
+  }
 })
 
 ipcMain.on('send-notification', (_event, payload: { title: string; body: string; requestId?: string }) => {
