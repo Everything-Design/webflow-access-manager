@@ -13,6 +13,8 @@ import {
 import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
+import http from 'http'
+import { URL } from 'url'
 
 let tray: Tray | null = null
 let popupWindow: BrowserWindow | null = null
@@ -26,6 +28,78 @@ const DASHBOARD_HEIGHT = 650
 
 // Vite dev server URL — vite-plugin-electron passes this via env
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
+
+// In production, serve the bundled dist over a localhost HTTP server. Firebase Auth refuses
+// to do its postMessage handshake with file:// origins (auth/unauthorized-domain). localhost
+// is allowed by Firebase by default, so this is the cleanest fix.
+let prodServerPort: number | null = null
+
+function mimeType(ext: string): string {
+  switch (ext) {
+    case '.html': return 'text/html; charset=utf-8'
+    case '.js': return 'application/javascript; charset=utf-8'
+    case '.css': return 'text/css; charset=utf-8'
+    case '.json': return 'application/json; charset=utf-8'
+    case '.svg': return 'image/svg+xml'
+    case '.png': return 'image/png'
+    case '.jpg':
+    case '.jpeg': return 'image/jpeg'
+    case '.woff': return 'font/woff'
+    case '.woff2': return 'font/woff2'
+    default: return 'application/octet-stream'
+  }
+}
+
+function startProdServer(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const distRoot = path.join(__dirname, '..', 'dist')
+    const server = http.createServer((req, res) => {
+      try {
+        const reqUrl = new URL(req.url ?? '/', 'http://localhost')
+        let pathname = decodeURIComponent(reqUrl.pathname)
+        if (pathname === '/' || !path.extname(pathname)) {
+          // SPA: any non-asset path falls through to index.html so HashRouter handles it
+          pathname = '/index.html'
+        }
+        const filePath = path.normalize(path.join(distRoot, pathname))
+        // Prevent path traversal — every served file must live under distRoot
+        if (!filePath.startsWith(distRoot)) {
+          res.writeHead(403)
+          res.end('forbidden')
+          return
+        }
+        if (!fs.existsSync(filePath)) {
+          res.writeHead(404)
+          res.end('not found')
+          return
+        }
+        res.writeHead(200, { 'Content-Type': mimeType(path.extname(filePath)) })
+        fs.createReadStream(filePath).pipe(res)
+      } catch (err) {
+        console.error('[prod-server] error:', err)
+        res.writeHead(500)
+        res.end('error')
+      }
+    })
+    server.on('error', reject)
+    // Bind to 127.0.0.1 only — never exposed beyond this machine
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address()
+      if (addr && typeof addr === 'object') {
+        console.log(`[Main] Prod server listening on http://localhost:${addr.port}`)
+        resolve(addr.port)
+      } else {
+        reject(new Error('Failed to obtain server port'))
+      }
+    })
+  })
+}
+
+function getAppUrl(hash: string): string {
+  if (isDev) return `${DEV_SERVER_URL}/#${hash}`
+  if (!prodServerPort) throw new Error('Prod server not started')
+  return `http://localhost:${prodServerPort}/#${hash}`
+}
 
 function getPreloadPath() {
   return path.join(__dirname, 'preload.js')
@@ -97,13 +171,7 @@ function createPopupWindow() {
     },
   })
 
-  if (isDev) {
-    popupWindow.loadURL(`${DEV_SERVER_URL}/#/popup`)
-  } else {
-    popupWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
-      hash: '/popup',
-    })
-  }
+  popupWindow.loadURL(getAppUrl('/popup'))
 
   // Log any load errors
   popupWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -147,13 +215,7 @@ function createDashboardWindow() {
     },
   })
 
-  if (isDev) {
-    dashboardWindow.loadURL(`${DEV_SERVER_URL}/#/dashboard`)
-  } else {
-    dashboardWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
-      hash: '/dashboard',
-    })
-  }
+  dashboardWindow.loadURL(getAppUrl('/dashboard'))
 
   dashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`[Dashboard] Failed to load: ${errorCode} - ${errorDescription}`)
@@ -369,9 +431,17 @@ function setupAppMenu() {
   Menu.setApplicationMenu(menu)
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   console.log('[Main] App ready. Dev mode:', isDev)
   console.log('[Main] Dev server URL:', DEV_SERVER_URL)
+
+  if (!isDev) {
+    try {
+      prodServerPort = await startProdServer()
+    } catch (err) {
+      console.error('[Main] Failed to start prod server — falling back to file://:', err)
+    }
+  }
 
   // Content Security Policy — restricts what the renderer can load.
   // Firebase needs https/wss to googleapis.com & firebaseio.com; Vite HMR needs ws://localhost in dev.
