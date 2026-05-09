@@ -38,6 +38,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (raw) {
         try {
           const cached: User = JSON.parse(raw)
+          // v1.x cached profiles have no `status` field — default to 'pending' so the
+          // gate logic doesn't behave unpredictably while waiting for Firebase Auth.
+          if (!cached.status) cached.status = 'pending'
           set({ currentUser: cached, isAuthenticated: true, isLoading: false })
           console.log('[Auth] Restored cached user:', cached.name)
         } catch {
@@ -67,8 +70,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }),
         }
 
-        // Creates with status='pending' on first sign-in; preserves status on subsequent sign-ins.
-        await firebaseService.registerTeamMember(baseUser)
+        // Creates with status='pending' on first sign-in; preserves status on subsequent
+        // sign-ins. If rules block this write (e.g. rules not published yet) we still
+        // advance the gate so the user sees a useful error rather than a spinner.
+        try {
+          await firebaseService.registerTeamMember(baseUser)
+        } catch (err) {
+          console.error('[Auth] registerTeamMember failed:', err)
+        }
 
         // After registration, the live status comes from Firebase. The subscription
         // (subscribeOwnStatus) updates currentUser.status as the admin acts.

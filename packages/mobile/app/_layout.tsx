@@ -38,9 +38,15 @@ export default function RootLayout() {
     if (!hasInitRef.current) {
       hasInitRef.current = true
       useAuthStore.getState().init()
-      useAdminStore.getState().start()
     }
   }, [])
+
+  // Admin observer needs an auth token to read /admin — start only after Firebase Auth confirms.
+  useEffect(() => {
+    if (!isFirebaseReady || !isAuthenticated) return
+    useAdminStore.getState().start()
+    return () => useAdminStore.getState().stop()
+  }, [isFirebaseReady, isAuthenticated])
 
   // Notification permissions
   useEffect(() => { Notifications.requestPermissionsAsync() }, [])

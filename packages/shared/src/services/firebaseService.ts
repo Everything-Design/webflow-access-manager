@@ -42,7 +42,14 @@ export function observeAdmin(callback: (adminUid: string | null) => void): Unsub
   return onValue(
     ref(getDb(), 'admin/uid'),
     (snapshot) => callback(snapshot.val() ?? null),
-    (error) => console.error('[Firebase] Admin observer error:', error)
+    (error) => {
+      // If rules deny the read (e.g. published rules don't match this client yet) we still
+      // need the gate to advance — otherwise the app sits on a spinner forever. Surfacing
+      // adminUid=null falls through to the ClaimAdmin screen, where any subsequent write
+      // attempt will produce a real error message instead of a silent hang.
+      console.error('[Firebase] Admin observer error — treating as no admin:', error)
+      callback(null)
+    }
   )
 }
 

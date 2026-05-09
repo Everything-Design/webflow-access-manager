@@ -65,9 +65,16 @@ export function App() {
     if (!hasInitRef.current) {
       hasInitRef.current = true
       useAuthStore.getState().init()
-      useAdminStore.getState().start()
     }
   }, [])
+
+  // Admin observer needs an auth token to read /admin per Firebase rules — start it only
+  // once Firebase Auth has confirmed the session.
+  useEffect(() => {
+    if (!isFirebaseReady || !isAuthenticated) return
+    useAdminStore.getState().start()
+    return () => useAdminStore.getState().stop()
+  }, [isFirebaseReady, isAuthenticated])
 
   // Setup app data listeners only once Firebase Auth is confirmed AND user is approved.
   // Pending users can't read /accounts etc. — so don't try.
