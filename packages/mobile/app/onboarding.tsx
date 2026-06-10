@@ -1,60 +1,97 @@
-import { useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import { useEffect, useState } from 'react'
+import { View } from 'react-native'
 import { router } from 'expo-router'
-import { useAuthStore } from '@wam/shared'
+import * as WebBrowser from 'expo-web-browser'
+import * as Google from 'expo-auth-session/providers/google'
+import { authFirebase } from '@wam/shared'
 import { useTheme } from '../utils/theme'
+import { Text, Button, Card, IconCircle, spacing } from '../ui'
+import { GOOGLE_OAUTH } from '../constants/googleOAuth'
+
+WebBrowser.maybeCompleteAuthSession()
 
 export default function OnboardingScreen() {
   const t = useTheme()
-  const [isLoading, setIsLoading] = useState(false)
+  const [isExchanging, setIsExchanging] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle)
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId: GOOGLE_OAUTH.webClientId,
+    iosClientId: GOOGLE_OAUTH.iosClientId,
+    androidClientId: GOOGLE_OAUTH.androidClientId,
+  })
+
+  useEffect(() => {
+    if (!response) return
+    if (response.type === 'error') {
+      setError(response.error?.message ?? 'Sign-in failed')
+      return
+    }
+    if (response.type === 'success' && response.params.id_token) {
+      setIsExchanging(true)
+      setError(null)
+      authFirebase
+        .signInWithGoogleIdToken(response.params.id_token)
+        .then(() => router.replace('/'))
+        .catch((err) => {
+          console.error('[Onboarding] Firebase credential exchange failed:', err)
+          const msg = err instanceof Error ? err.message : 'Sign-in failed'
+          setError(msg.replace(/^Firebase:\s*/, ''))
+        })
+        .finally(() => setIsExchanging(false))
+    } else if (response.type === 'success') {
+      setError('Google did not return an id_token. Check the OAuth client config.')
+    }
+  }, [response])
 
   const handleSignIn = async () => {
-    setIsLoading(true)
     setError(null)
     try {
-      await signInWithGoogle()
-      router.replace('/')
+      await promptAsync()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(msg.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim() || msg)
-      setIsLoading(false)
+      console.error('[Onboarding] promptAsync threw:', err)
+      setError(err instanceof Error ? err.message : 'Could not open Google sign-in')
     }
   }
 
+  const isLoading = isExchanging || !request
+
   return (
-    <View style={[s.container, { backgroundColor: t.bg }]}>
-      <View style={s.content}>
-        <Text style={s.icon}>👥</Text>
-        <Text style={[s.title, { color: t.text }]}>Webflow Access Manager</Text>
-        <Text style={[s.subtitle, { color: t.textSecondary }]}>
-          Sign in with Google to coordinate Webflow account access with your team.
-        </Text>
+    <View style={{ flex: 1, backgroundColor: t.bgGrouped, justifyContent: 'center', padding: spacing.xxl }}>
+      <View style={{ gap: spacing.xxl, alignItems: 'center' }}>
+        <IconCircle emoji="👥" color="accent" size={88} />
 
-        <TouchableOpacity
-          style={[s.button, { backgroundColor: t.accent }, isLoading && s.buttonDisabled]}
+        <View style={{ gap: spacing.sm, alignItems: 'center' }}>
+          <Text variant="title1" align="center">
+            Webflow Access Manager
+          </Text>
+          <Text
+            variant="subheadline"
+            color="secondary"
+            align="center"
+            style={{ maxWidth: 300 }}
+          >
+            Sign in with Google to coordinate Webflow account access with your team.
+          </Text>
+        </View>
+
+        <Button
+          title="Continue with Google"
+          variant="filled"
+          size="lg"
+          fullWidth
+          loading={isLoading}
           onPress={handleSignIn}
-          disabled={isLoading}
-          activeOpacity={0.85}
-        >
-          {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Continue with Google</Text>}
-        </TouchableOpacity>
+        />
 
-        {error && <Text style={[s.error, { color: t.red }]}>{error}</Text>}
+        {error && (
+          <Card tone="danger" padding="md" bordered style={{ alignSelf: 'stretch' }}>
+            <Text variant="footnote" color="danger">
+              {error}
+            </Text>
+          </Card>
+        )}
       </View>
     </View>
   )
 }
-
-const s = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 32 },
-  content: { gap: 16, alignItems: 'center' },
-  icon: { fontSize: 48 },
-  title: { fontSize: 22, fontWeight: '600', textAlign: 'center' },
-  subtitle: { fontSize: 13, textAlign: 'center', marginBottom: 12, maxWidth: 280 },
-  button: { borderRadius: 8, paddingVertical: 14, paddingHorizontal: 32, alignItems: 'center', alignSelf: 'stretch', marginTop: 4 },
-  buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  error: { fontSize: 11 },
-})

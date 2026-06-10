@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, KeyboardAvoidingView, Platform } from 'react-native'
+import { View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { useAppStore, getAccountDisplayName } from '@wam/shared'
 import type { AccessRequest } from '@wam/shared'
 import { useTheme } from '../utils/theme'
+import { Text, Button, Card, IconCircle, Sheet, haptic, spacing } from '../ui'
 
 type Mode = 'accept' | 'reject' | null
 
@@ -17,8 +19,10 @@ export function AccessRequestRow({ request }: { request: AccessRequest }) {
 
   const handleConfirm = () => {
     if (mode === 'accept') {
+      haptic.success()
       releaseAccountForRequest(request, note.trim() || undefined)
     } else if (mode === 'reject') {
+      haptic.warn()
       rejectRequest(request.id, note.trim() || undefined)
     }
     setMode(null)
@@ -26,84 +30,58 @@ export function AccessRequestRow({ request }: { request: AccessRequest }) {
   }
 
   return (
-    <View style={[s.card, { backgroundColor: t.cardHighlightOrange }]}>
-      <View style={s.header}>
-        <Text style={{ fontSize: 16, color: t.orange, fontWeight: '700' }}>!</Text>
-        <Text style={[s.title, { color: t.text }]}>{request.requesterName} requests {accountName}</Text>
-      </View>
-      {request.requesterNote && (
-        <Text style={[s.note, { color: t.textSecondary }]}>"{request.requesterNote}"</Text>
-      )}
-      <View style={s.actions}>
-        <TouchableOpacity style={[s.acceptBtn, { backgroundColor: t.accent }]} onPress={() => setMode('accept')}>
-          <Text style={s.acceptText}>Release & Accept</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.rejectBtn, { borderColor: `${t.red}30` }]} onPress={() => setMode('reject')}>
-          <Text style={{ color: t.red, fontSize: 12, fontWeight: '500' }}>Reject</Text>
-        </TouchableOpacity>
-      </View>
+    <>
+      <Card tone="warning" bordered padding="md">
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+          <IconCircle
+            glyph={<Ionicons name="alert" size={16} color={t.orange} />}
+            color="orange"
+            size={32}
+          />
 
-      <Modal visible={mode !== null} transparent animationType="fade" onRequestClose={() => setMode(null)}>
-        <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[s.modalContent, { backgroundColor: t.bgElevated }]}>
-            <Text style={[s.modalTitle, { color: t.text }]}>
-              {mode === 'accept' ? 'Release & accept' : 'Reject request'}
-            </Text>
-            <Text style={[s.modalSub, { color: t.textSecondary }]}>
-              {mode === 'accept'
-                ? `Release ${accountName} for ${request.requesterName}.`
-                : `Reject ${request.requesterName}'s request.`}
+          <View style={{ flex: 1, gap: spacing.sm }}>
+            <Text variant="callout" weight="semibold">
+              {request.requesterName} wants {accountName}
             </Text>
 
-            <Text style={[s.modalLabel, { color: t.textSecondary }]}>Add a note (optional)</Text>
-            <TextInput
-              style={[s.input, { backgroundColor: t.bg, borderColor: t.border, color: t.text }]}
-              placeholder={mode === 'accept' ? 'e.g., Done in 5 mins' : 'e.g., Working on a live deploy'}
-              placeholderTextColor={t.textTertiary}
-              value={note}
-              onChangeText={setNote}
-              autoFocus
-              multiline
-            />
+            {/* Always render the note line — falls back to a neutral hint so the card
+                height stays constant whether the requester left a note or not. */}
+            <Text
+              variant="footnote"
+              color={request.requesterNote ? 'secondary' : 'tertiary'}
+              style={request.requesterNote ? undefined : { fontStyle: 'italic' }}
+            >
+              {request.requesterNote ? `"${request.requesterNote}"` : 'No note attached'}
+            </Text>
 
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={[s.modalBtn, { backgroundColor: t.bg, borderColor: t.border }]}
-                onPress={() => { setMode(null); setNote('') }}
-              >
-                <Text style={{ color: t.text, fontSize: 13, fontWeight: '500' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.modalBtn, { backgroundColor: mode === 'accept' ? t.accent : t.red, borderColor: 'transparent' }]}
-                onPress={handleConfirm}
-              >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
-                  {mode === 'accept' ? 'Release & Accept' : 'Reject'}
-                </Text>
-              </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+              <Button title="Hand over" variant="filled" size="sm" onPress={() => setMode('accept')} />
+              <Button title="Decline" variant="gray" size="sm" destructive onPress={() => setMode('reject')} />
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+        </View>
+      </Card>
+
+      <Sheet
+        open={mode !== null}
+        onClose={() => {
+          setMode(null)
+          setNote('')
+        }}
+        title={mode === 'accept' ? 'Hand over account' : 'Decline request'}
+        body={
+          mode === 'accept'
+            ? `Release ${accountName} for ${request.requesterName}.`
+            : `Decline ${request.requesterName}'s request.`
+        }
+        inputLabel="Add a note (optional)"
+        inputValue={note}
+        onChangeInput={setNote}
+        inputPlaceholder={mode === 'accept' ? 'e.g., Done in 5 mins' : 'e.g., In a live deploy'}
+        primaryTitle={mode === 'accept' ? 'Hand over' : 'Decline'}
+        primaryDestructive={mode === 'reject'}
+        onPrimary={handleConfirm}
+      />
+    </>
   )
 }
-
-const s = StyleSheet.create({
-  card: { borderRadius: 10, padding: 12, marginBottom: 6 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  title: { fontSize: 14, fontWeight: '500', flex: 1 },
-  note: { fontSize: 12, fontStyle: 'italic', marginBottom: 8, marginLeft: 22 },
-  actions: { flexDirection: 'row', gap: 8, marginLeft: 22 },
-  acceptBtn: { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 },
-  acceptText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  rejectBtn: { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1 },
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 360, borderRadius: 14, padding: 20 },
-  modalTitle: { fontSize: 17, fontWeight: '600' },
-  modalSub: { fontSize: 12, marginTop: 4, marginBottom: 16 },
-  modalLabel: { fontSize: 11, fontWeight: '500', marginBottom: 4 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, fontSize: 14, minHeight: 60 },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 16 },
-  modalBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-})

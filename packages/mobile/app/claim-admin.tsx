@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
+import { View } from 'react-native'
 import { useAuthStore, useAdminStore } from '@wam/shared'
 import { useTheme } from '../utils/theme'
+import { Text, Button, Card, IconCircle, Tag, spacing } from '../ui'
 
 export default function ClaimAdminScreen() {
   const t = useTheme()
@@ -24,38 +25,50 @@ export default function ClaimAdminScreen() {
   }
 
   return (
-    <View style={[s.container, { backgroundColor: t.bg }]}>
-      <Text style={s.icon}>👑</Text>
-      <Text style={[s.title, { color: t.text }]}>No admin yet</Text>
-      <Text style={[s.body, { color: t.textSecondary }]}>
-        This workspace doesn't have an admin. Claim it to manage the team and account slots.
-      </Text>
-      <Text style={[s.email, { color: t.textTertiary }]}>
-        Signed in as <Text style={{ color: t.text }}>{currentUser?.email ?? currentUser?.name}</Text>
-      </Text>
-      <TouchableOpacity
-        style={[s.btnPrimary, { backgroundColor: t.accent }, isClaiming && { opacity: 0.5 }]}
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: t.bgGrouped,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: spacing.xxl,
+        gap: spacing.lg,
+      }}
+    >
+      <IconCircle emoji="👑" color="purple" size={72} />
+
+      <View style={{ gap: spacing.sm, alignItems: 'center' }}>
+        <Text variant="title2" align="center">
+          No admin yet
+        </Text>
+        <Text variant="body" color="secondary" align="center" style={{ maxWidth: 320 }}>
+          This workspace doesn't have an admin. Claim it to manage the team and account
+          slots.
+        </Text>
+      </View>
+
+      {(currentUser?.email || currentUser?.name) && (
+        <Tag label={`Signed in as ${currentUser.email ?? currentUser.name}`} tone="neutral" />
+      )}
+
+      <Button
+        title="Claim admin"
+        variant="filled"
+        size="lg"
+        fullWidth
+        loading={isClaiming}
         onPress={onClaim}
-        disabled={isClaiming}
-      >
-        {isClaiming ? <ActivityIndicator color="#fff" /> : <Text style={s.btnPrimaryText}>Claim admin</Text>}
-      </TouchableOpacity>
-      {error && <Text style={[s.error, { color: t.red }]}>{error}</Text>}
-      <TouchableOpacity onPress={() => signOut()}>
-        <Text style={[s.linkText, { color: t.textSecondary }]}>Sign out</Text>
-      </TouchableOpacity>
+      />
+
+      {error && (
+        <Card tone="danger" padding="md" bordered style={{ alignSelf: 'stretch' }}>
+          <Text variant="footnote" color="danger" align="center">
+            {error}
+          </Text>
+        </Card>
+      )}
+
+      <Button title="Sign out" variant="plain" onPress={() => signOut()} />
     </View>
   )
 }
-
-const s = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 12 },
-  icon: { fontSize: 48 },
-  title: { fontSize: 20, fontWeight: '600' },
-  body: { fontSize: 14, textAlign: 'center', maxWidth: 280, marginBottom: 8 },
-  email: { fontSize: 12, marginTop: 4 },
-  btnPrimary: { marginTop: 16, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 8, alignSelf: 'stretch', alignItems: 'center' },
-  btnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  error: { fontSize: 12 },
-  linkText: { fontSize: 13, marginTop: 8 },
-})

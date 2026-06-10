@@ -1,9 +1,22 @@
 import { useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native'
+import { View, ScrollView, TextInput, Pressable, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuthStore, useAppStore, useAdminStore } from '@wam/shared'
 import { useTheme } from '../../utils/theme'
+import {
+  Text,
+  Button,
+  Card,
+  Tag,
+  IconCircle,
+  ListSection,
+  ListRow,
+  StatusDot,
+  spacing,
+  radius,
+  haptic,
+} from '../../ui'
 
 const ICONS = [
   { id: 'user', emoji: '👤' }, { id: 'star', emoji: '⭐' }, { id: 'heart', emoji: '❤️' },
@@ -52,204 +65,344 @@ export default function SettingsScreen() {
     }
   }, [currentUser])
 
+  const profileChanged =
+    name.trim() !== (currentUser?.name ?? '') ||
+    icon !== (currentUser?.profileIcon ?? 'user') ||
+    color !== (currentUser?.profileColor ?? '0066CC')
+
   const handleSave = async () => {
-    await updateUser({ name: name.trim(), profileIcon: icon, profileColor: color })
-    Alert.alert('Saved', 'Profile updated successfully')
+    try {
+      await updateUser({ name: name.trim(), profileIcon: icon, profileColor: color })
+      haptic.success()
+      Alert.alert('Saved', 'Profile updated')
+    } catch (err) {
+      haptic.danger()
+      const msg = err instanceof Error ? err.message : 'Could not save changes'
+      Alert.alert("Couldn't save", msg)
+    }
   }
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure?', [
+    Alert.alert('Sign out?', 'You can come back any time.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/onboarding') } },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          haptic.warn()
+          // Navigate only after sign-out resolves, never before. If it rejects we
+          // surface the error rather than leaving the user in a half-signed-out state.
+          signOut()
+            .then(() => router.replace('/onboarding'))
+            .catch((err) => {
+              const msg = err instanceof Error ? err.message : "Couldn't sign out"
+              Alert.alert("Couldn't sign out", msg)
+            })
+        },
+      },
     ])
   }
 
   const handleRemove = (uid: string, memberName: string) => {
-    Alert.alert(`Remove ${memberName}`, 'They will need to be re-approved if they sign in again.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeTeamMember(uid) },
-    ])
+    Alert.alert(
+      `Remove ${memberName}?`,
+      'They will need approval again next time they sign in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            haptic.warn()
+            removeTeamMember(uid)
+          },
+        },
+      ],
+    )
   }
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: t.bg }]}>
-      <View style={s.header}>
-        <Text style={[s.title, { color: t.text }]}>Settings</Text>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: t.bgGrouped }} edges={['top']}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.xl }}
+      >
+        <Text variant="largeTitle">Settings</Text>
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        <Text style={[s.sectionTitle, { color: t.text }]}>Profile</Text>
-        <View style={[s.card, { backgroundColor: t.bgElevated }]}>
-          <View style={s.profileRow}>
-            <View style={[s.avatar, { backgroundColor: `#${color}20` }]}>
-              <Text style={s.avatarEmoji}>{ICONS.find((i) => i.id === icon)?.emoji ?? '👤'}</Text>
+        {/* Profile card */}
+        <Card>
+          <View style={{ gap: spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <IconCircle emoji={ICONS.find((i) => i.id === icon)?.emoji ?? '👤'} color={color} size={56} />
+              <View style={{ flex: 1 }}>
+                <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Name
+                </Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your name"
+                  placeholderTextColor={t.textTertiary}
+                  style={{
+                    color: t.text,
+                    fontSize: 17,
+                    fontWeight: '500',
+                    paddingVertical: spacing.xs,
+                  }}
+                />
+                {currentUser?.email && (
+                  <Text variant="footnote" color="secondary">
+                    {currentUser.email}
+                  </Text>
+                )}
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.label, { color: t.textSecondary }]}>Name</Text>
-              <TextInput
-                style={[s.input, { backgroundColor: t.bg, color: t.text }]}
-                value={name}
-                onChangeText={setName}
-                placeholder="Your name"
-                placeholderTextColor={t.textTertiary}
-              />
-              {currentUser?.email && <Text style={[s.emailText, { color: t.textSecondary }]}>{currentUser.email}</Text>}
+
+            {/* Icon picker */}
+            <View style={{ gap: spacing.sm }}>
+              <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Icon
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {ICONS.map((i) => {
+                  const selected = icon === i.id
+                  return (
+                    <Pressable
+                      key={i.id}
+                      onPress={() => {
+                        haptic.select()
+                        setIcon(i.id)
+                      }}
+                      style={({ pressed }) => ({
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        backgroundColor: selected ? `#${color}22` : t.fill1,
+                        borderWidth: selected ? 2 : 0,
+                        borderColor: `#${color}`,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <Text variant="body" style={{ fontSize: 22, lineHeight: 24 }}>
+                        {i.emoji}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
             </View>
-          </View>
 
-          <Text style={[s.label, { color: t.textSecondary, marginTop: 12 }]}>Icon</Text>
-          <View style={s.grid}>
-            {ICONS.map((i) => (
-              <TouchableOpacity
-                key={i.id}
-                style={[s.iconBtn, { backgroundColor: t.bg, borderColor: icon === i.id ? `#${color}` : t.border }, icon === i.id && { borderWidth: 2 }]}
-                onPress={() => setIcon(i.id)}
-              >
-                <Text style={{ fontSize: 20 }}>{i.emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+            {/* Color picker */}
+            <View style={{ gap: spacing.sm }}>
+              <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Color
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+                {COLORS.map((c) => {
+                  const selected = color === c.hex
+                  return (
+                    <Pressable
+                      key={c.hex}
+                      onPress={() => {
+                        haptic.select()
+                        setColor(c.hex)
+                      }}
+                      style={({ pressed }) => ({
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        backgroundColor: `#${c.hex}`,
+                        borderWidth: selected ? 3 : 0,
+                        borderColor: t.bgGroupedElevated,
+                        opacity: pressed ? 0.7 : 1,
+                        ...(selected
+                          ? { shadowColor: `#${c.hex}`, shadowOpacity: 0.5, shadowRadius: 6, elevation: 2 }
+                          : {}),
+                      })}
+                    />
+                  )
+                })}
+              </View>
+            </View>
 
-          <Text style={[s.label, { color: t.textSecondary, marginTop: 12 }]}>Color</Text>
-          <View style={s.colorGrid}>
-            {COLORS.map((c) => (
-              <TouchableOpacity key={c.hex} onPress={() => setColor(c.hex)} style={s.colorWrap}>
-                <View style={[s.colorDot, { backgroundColor: `#${c.hex}` }, color === c.hex && { borderWidth: 3, borderColor: t.text }]} />
-                <Text style={[s.colorName, { color: t.textSecondary }]}>{c.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {profileChanged && (
+              <Button title="Save changes" variant="filled" fullWidth onPress={handleSave} />
+            )}
           </View>
-        </View>
+        </Card>
 
-        {/* Pending approvals — admin only */}
+        {/* Pending approvals — admin only, only if any */}
         {isAdmin && pendingTeamMembers.length > 0 && (
-          <>
-            <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>
-              Pending approvals ({pendingTeamMembers.length})
-            </Text>
-            <View style={{ gap: 8 }}>
-              {pendingTeamMembers.map((m) => (
-                <View key={m.id} style={[s.card, { backgroundColor: t.bgElevated, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '500', color: t.text }}>{m.name || m.email}</Text>
-                    <Text style={{ fontSize: 11, color: t.textSecondary }}>{m.email}</Text>
+          <ListSection header={`Pending approvals (${pendingTeamMembers.length})`}>
+            {pendingTeamMembers.map((m) => (
+              <ListRow
+                key={m.id}
+                leading={<IconCircle emoji={m.profileIcon ? ICONS.find((i) => i.id === m.profileIcon)?.emoji : '👤'} color={m.profileColor ?? 'accent'} size={36} />}
+                title={m.name || m.email || 'Unknown'}
+                subtitle={m.email}
+                trailing={
+                  <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                    <Button
+                      title="Approve"
+                      variant="tinted"
+                      size="sm"
+                      onPress={() => {
+                        haptic.success()
+                        approveTeamMember(m.id)
+                      }}
+                    />
+                    <Button
+                      title="Reject"
+                      variant="gray"
+                      size="sm"
+                      destructive
+                      onPress={() => {
+                        haptic.warn()
+                        rejectTeamMember(m.id)
+                      }}
+                    />
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <TouchableOpacity
-                      onPress={() => approveTeamMember(m.id)}
-                      style={{ backgroundColor: t.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Approve</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => rejectTeamMember(m.id)}
-                      style={{ backgroundColor: t.bg, borderWidth: 1, borderColor: t.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
-                    >
-                      <Text style={{ color: t.text, fontSize: 12, fontWeight: '500' }}>Reject</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </>
+                }
+              />
+            ))}
+          </ListSection>
         )}
 
         {/* Team list */}
-        <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>
-          Team ({approvedCount})
-        </Text>
-        <View style={[s.card, { backgroundColor: t.bgElevated, padding: 6 }]}>
-          {team.filter((m) => m.status === 'approved').map((m) => (
-            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, gap: 10 }}>
-              <View style={[s.dot, { backgroundColor: m.isOnline ? t.green : t.textTertiary }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, color: t.text }}>
-                  {m.name}
-                  {m.id === adminUid && <Text style={{ color: t.accent, fontSize: 10 }}>{'  admin'}</Text>}
-                  {m.id === currentUser?.id && <Text style={{ color: t.textSecondary, fontSize: 10 }}>{'  you'}</Text>}
-                </Text>
-                <Text style={{ fontSize: 11, color: t.textTertiary }}>{m.email}</Text>
-              </View>
-              {isAdmin && m.id !== currentUser?.id && (
-                <TouchableOpacity onPress={() => handleRemove(m.id, m.name)}>
-                  <Text style={{ fontSize: 11, color: t.red }}>Remove</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-        </View>
+        <ListSection header={`Team (${approvedCount})`}>
+          {team
+            .filter((m) => m.status === 'approved')
+            .map((m) => {
+              const isMe = m.id === currentUser?.id
+              const isAdminMember = m.id === adminUid
+              return (
+                <ListRow
+                  key={m.id}
+                  leading={
+                    <View>
+                      <IconCircle
+                        emoji={m.profileIcon ? ICONS.find((i) => i.id === m.profileIcon)?.emoji : '👤'}
+                        color={m.profileColor ?? 'accent'}
+                        size={36}
+                      />
+                      {m.isOnline && (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            right: 0,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: t.green,
+                            borderWidth: 2,
+                            borderColor: t.bgGroupedElevated,
+                          }}
+                        />
+                      )}
+                    </View>
+                  }
+                  title={
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                      <Text variant="body" numberOfLines={1} style={{ flexShrink: 1 }}>
+                        {m.name}
+                      </Text>
+                      {isAdminMember && <Tag label="Admin" tone="accent" size="sm" />}
+                      {isMe && <Tag label="You" tone="neutral" size="sm" />}
+                    </View>
+                  }
+                  subtitle={m.email}
+                  trailing={
+                    isAdmin && !isMe ? (
+                      <Button
+                        title="Remove"
+                        variant="plain"
+                        size="sm"
+                        destructive
+                        onPress={() => handleRemove(m.id, m.name)}
+                      />
+                    ) : undefined
+                  }
+                />
+              )
+            })}
+        </ListSection>
 
         {/* Overview */}
-        <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Overview</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
-            <Text style={[s.statLabel, { color: t.textSecondary }]}>TEAM</Text>
-            <Text style={[s.statValue, { color: t.text }]}>{approvedCount}</Text>
-            <Text style={{ fontSize: 11, color: t.green, marginTop: 2 }}>{onlineCount} online</Text>
+        <View style={{ gap: spacing.sm }}>
+          <Text
+            variant="caption2"
+            color="secondary"
+            style={{ textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: spacing.lg }}
+          >
+            Overview
+          </Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <StatCard label="Team" value={approvedCount} accent={`${onlineCount} online`} accentTone="success" />
+            <StatCard
+              label="Accounts"
+              value={accounts.length}
+              accent={`${availableAccounts} free · ${occupiedAccounts} in use`}
+            />
           </View>
-          <View style={[s.statCard, { backgroundColor: t.bgElevated }]}>
-            <Text style={[s.statLabel, { color: t.textSecondary }]}>INTERNAL</Text>
-            <Text style={[s.statValue, { color: t.text }]}>{accounts.length}</Text>
-            <Text style={{ fontSize: 11, marginTop: 2 }}>
-              <Text style={{ color: t.green }}>{availableAccounts} free</Text>
-              <Text style={{ color: t.textSecondary }}> · </Text>
-              <Text style={{ color: t.red }}>{occupiedAccounts} in use</Text>
-            </Text>
-          </View>
-          <View style={[s.statCard, { backgroundColor: t.bgElevated, flexBasis: '100%' }]}>
-            <Text style={[s.statLabel, { color: t.textSecondary }]}>CLIENT ACCOUNTS</Text>
-            <Text style={[s.statValue, { color: t.text }]}>{clientAccounts.length}</Text>
-          </View>
-        </View>
-
-        <Text style={[s.sectionTitle, { color: t.text, marginTop: 24 }]}>Connection</Text>
-        <View style={[s.card, { backgroundColor: t.bgElevated }]}>
-          <View style={s.statusRow}>
-            <View style={[s.dot, { backgroundColor: isConnected ? t.green : t.red }]} />
-            <Text style={{ fontSize: 13, color: t.text }}>{isConnected ? 'Connected to Firebase' : 'Disconnected'}</Text>
+          <View style={{ flexDirection: 'row' }}>
+            <StatCard label="Client accounts" value={clientAccounts.length} fullWidth />
           </View>
         </View>
 
-        <View style={{ marginTop: 24, gap: 10 }}>
-          <TouchableOpacity style={[s.saveBtn, { backgroundColor: t.accent }]} onPress={handleSave} disabled={!name.trim()}>
-            <Text style={s.saveBtnText}>Save Changes</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.signOutBtn, { backgroundColor: t.bgElevated, borderColor: t.border }]} onPress={handleSignOut}>
-            <Text style={[s.signOutBtnText, { color: t.text }]}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Connection */}
+        <ListSection>
+          <ListRow
+            leading={<StatusDot tone={isConnected ? 'success' : 'danger'} size={12} />}
+            title={isConnected ? 'Connected to Firebase' : 'Disconnected'}
+            subtitle="Live sync across devices"
+          />
+        </ListSection>
+
+        {/* Sign out */}
+        <Button title="Sign out" variant="gray" destructive fullWidth onPress={handleSignOut} />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  title: { fontSize: 22, fontWeight: '600' },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 40 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', marginBottom: 8 },
-  card: { borderRadius: 12, padding: 16 },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
-  avatarEmoji: { fontSize: 24 },
-  label: { fontSize: 11, fontWeight: '500', marginBottom: 4 },
-  input: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
-  emailText: { fontSize: 11, marginTop: 4 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  iconBtn: { width: 40, height: 40, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  colorWrap: { alignItems: 'center', gap: 4 },
-  colorDot: { width: 28, height: 28, borderRadius: 14 },
-  colorName: { fontSize: 9 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  saveBtn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  signOutBtn: { borderRadius: 10, paddingVertical: 14, alignItems: 'center', borderWidth: 1 },
-  signOutBtnText: { fontSize: 15, fontWeight: '500' },
-  statCard: { flex: 1, minWidth: 140, borderRadius: 12, padding: 12 },
-  statLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5 },
-  statValue: { fontSize: 22, fontWeight: '600', marginTop: 4 },
-})
+// Small stat tile — kept inline; we'd only abstract if a third screen needed it.
+function StatCard({
+  label,
+  value,
+  accent,
+  accentTone = 'secondary',
+  fullWidth = false,
+}: {
+  label: string
+  value: string | number
+  accent?: string
+  accentTone?: 'secondary' | 'success' | 'warning' | 'danger'
+  fullWidth?: boolean
+}) {
+  const t = useTheme()
+  return (
+    <View
+      style={{
+        flex: fullWidth ? undefined : 1,
+        alignSelf: fullWidth ? 'stretch' : undefined,
+        backgroundColor: t.bgGroupedElevated,
+        borderRadius: radius.lg,
+        padding: spacing.lg,
+        gap: spacing.xs,
+      }}
+    >
+      <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </Text>
+      <Text variant="title1">{value}</Text>
+      {accent && (
+        <Text variant="footnote" color={accentTone}>
+          {accent}
+        </Text>
+      )}
+    </View>
+  )
+}

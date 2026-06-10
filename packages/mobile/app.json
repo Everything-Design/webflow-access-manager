@@ -2,7 +2,7 @@
   "expo": {
     "name": "Webflow Access Manager",
     "slug": "webflow-access-manager",
-    "version": "2.1.1",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -33,7 +33,8 @@
           "icon": "./assets/icon.png",
           "color": "#007AFF"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},

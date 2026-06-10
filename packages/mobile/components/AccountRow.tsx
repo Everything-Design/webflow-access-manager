@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { View, Alert } from 'react-native'
 import { useAppStore, useAuthStore, isAccountAvailable, formatDuration, getAccountDisplayName } from '@wam/shared'
 import type { Account } from '@wam/shared'
-import { useTheme } from '../utils/theme'
+import { Text, Button, StatusDot, Sheet, ListRow, haptic, spacing } from '../ui'
 
 export function AccountRow({ account }: { account: Account }) {
-  const t = useTheme()
   const currentUser = useAuthStore((s) => s.currentUser)
   const accounts = useAppStore((s) => s.accounts)
   const accessRequests = useAppStore((s) => s.accessRequests)
@@ -25,138 +24,145 @@ export function AccountRow({ account }: { account: Account }) {
     (r) => r.accountId === account.id && r.requesterId === currentUser?.id && r.status === 'pending'
   )
 
-  const dotColor = available ? t.green : hasActiveRequest ? t.yellow : t.red
+  // Map state → semantic colour. Same vocabulary as the desktop tray icon so the visual
+  // language is consistent across platforms.
+  const dotTone: 'success' | 'warning' | 'danger' = isMyAccount
+    ? 'success'
+    : available
+      ? 'success'
+      : hasActiveRequest
+        ? 'warning'
+        : 'danger'
 
-  // Request note dialog
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [requestNote, setRequestNote] = useState('')
 
   const handleSendRequest = () => {
-    if (currentUser) {
-      requestAccess(account, currentUser, requestNote)
-      setRequestNote('')
-      setShowRequestModal(false)
-    }
+    if (!currentUser) return
+    haptic.impact()
+    requestAccess(account, currentUser, requestNote)
+    setRequestNote('')
+    setShowRequestModal(false)
   }
 
+  const handleRelease = () => {
+    Alert.alert(
+      'Release Account',
+      `Release ${getAccountDisplayName(account.id, account.label)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Release',
+          style: 'destructive',
+          onPress: () => {
+            haptic.success()
+            releaseAccount(account.id)
+          },
+        },
+      ],
+    )
+  }
+
+  const handleClaim = () => {
+    if (!currentUser) return
+    haptic.success()
+    claimAccount(account, currentUser)
+  }
+
+  // Stable callback — finds the row's own pending request at call time so the closure
+  // never holds a stale `accessRequests` snapshot. Without this the trailing arrow
+  // would capture an old store snapshot and could cancel the wrong (or no longer
+  // existing) request id after a re-render.
+  const handleCancelRequest = useCallback(() => {
+    const latestRequests = useAppStore.getState().accessRequests
+    const req = latestRequests.find(
+      (r) => r.accountId === account.id && r.requesterId === currentUser?.id && r.status === 'pending'
+    )
+    if (req) {
+      haptic.warn()
+      cancelRequest(req.id)
+    }
+  }, [account.id, currentUser?.id, cancelRequest])
+
+  // Subtitle composes whatever is most useful for the row's current state — falls back
+  // to "Available" so the row height stays constant when status flips.
+  const subtitle =
+    isMyAccount
+      ? account.occupiedSince ? `You · ${formatDuration(account.occupiedSince)}` : 'You'
+    : !available && account.occupiedByName
+      ? `${account.occupiedByName}${account.occupiedSince ? ` · ${formatDuration(account.occupiedSince)}` : ''}`
+      : 'Available'
+
   return (
-    <View style={[s.card, { backgroundColor: t.bgElevated }]}>
-      <View style={[s.dot, { backgroundColor: dotColor }]} />
+    <>
+      <ListRow
+        leading={<StatusDot tone={dotTone} size={10} />}
+        title={getAccountDisplayName(account.id, account.label)}
+        subtitle={subtitle}
+        trailing={
+          <ActionButton
+            isMine={isMyAccount}
+            available={available}
+            hasRequest={hasActiveRequest}
+            blockedByMine={!!myAccount && !isMyAccount}
+            onClaim={handleClaim}
+            onRelease={handleRelease}
+            onRequest={() => setShowRequestModal(true)}
+            onCancelRequest={handleCancelRequest}
+          />
+        }
+      />
 
-      <View style={s.info}>
-        <Text style={[s.name, { color: t.text }]}>{getAccountDisplayName(account.id, account.label)}</Text>
-        {account.isOccupied && account.occupiedByName ? (
-          <>
-            <Text style={[s.sub, { color: t.textSecondary }]}>Used by {account.occupiedByName}</Text>
-            {account.occupiedSince && (
-              <Text style={[s.duration, { color: t.accent }]}>{formatDuration(account.occupiedSince)}</Text>
-            )}
-          </>
-        ) : (
-          <Text style={[s.sub, { color: t.green }]}>Available</Text>
-        )}
-      </View>
-
-      <View style={s.actions}>
-        {isMyAccount && (
-          <TouchableOpacity
-            style={[s.btn, { backgroundColor: t.bg, borderColor: t.border }]}
-            onPress={() => Alert.alert('Release Account', `Release ${getAccountDisplayName(account.id, account.label)}?`, [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Release', style: 'destructive', onPress: () => releaseAccount(account.id) },
-            ])}
-          >
-            <Text style={[s.btnText, { color: t.text }]}>Release</Text>
-          </TouchableOpacity>
-        )}
-        {!isMyAccount && available && !myAccount && (
-          <TouchableOpacity style={s.btnPrimary} onPress={() => currentUser && claimAccount(account, currentUser)}>
-            <Text style={s.btnPrimaryText}>Claim</Text>
-          </TouchableOpacity>
-        )}
-        {!isMyAccount && !available && !myAccount && !hasActiveRequest && (
-          <TouchableOpacity
-            style={[s.btn, { backgroundColor: t.bg, borderColor: t.border }]}
-            onPress={() => setShowRequestModal(true)}
-          >
-            <Text style={[s.btnText, { color: t.text }]}>Request</Text>
-          </TouchableOpacity>
-        )}
-        {/* Cancel only when account is still occupied — if available, show Claim instead */}
-        {hasActiveRequest && !available && (
-          <TouchableOpacity
-            style={[s.btn, { backgroundColor: `${t.red}10`, borderColor: `${t.red}30` }]}
-            onPress={() => {
-              const req = accessRequests.find(
-                (r) => r.accountId === account.id && r.requesterId === currentUser?.id && r.status === 'pending'
-              )
-              if (req) cancelRequest(req.id)
-            }}
-          >
-            <Text style={[s.btnText, { color: t.red }]}>Cancel</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <Modal visible={showRequestModal} transparent animationType="fade" onRequestClose={() => setShowRequestModal(false)}>
-        <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[s.modalContent, { backgroundColor: t.bgElevated }]}>
-            <Text style={[s.modalTitle, { color: t.text }]}>Request access</Text>
-            <Text style={[s.modalSub, { color: t.textSecondary }]}>
-              {getAccountDisplayName(account.id, account.label)} is being used by {account.occupiedByName}.
-            </Text>
-
-            <Text style={[s.modalLabel, { color: t.textSecondary }]}>Add a note (optional)</Text>
-            <TextInput
-              style={[s.input, { backgroundColor: t.bg, borderColor: t.border, color: t.text }]}
-              placeholder="e.g., Need to push client changes"
-              placeholderTextColor={t.textTertiary}
-              value={requestNote}
-              onChangeText={setRequestNote}
-              autoFocus
-              multiline
-            />
-
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={[s.modalBtn, { backgroundColor: t.bg, borderColor: t.border }]}
-                onPress={() => { setShowRequestModal(false); setRequestNote('') }}
-              >
-                <Text style={{ color: t.text, fontSize: 13, fontWeight: '500' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.modalBtn, { backgroundColor: t.accent, borderColor: t.accent }]}
-                onPress={handleSendRequest}
-              >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Send Request</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+      <Sheet
+        open={showRequestModal}
+        onClose={() => {
+          setShowRequestModal(false)
+          setRequestNote('')
+        }}
+        title="Request access"
+        body={`${getAccountDisplayName(account.id, account.label)} is being used by ${account.occupiedByName}.`}
+        inputLabel="Add a note (optional)"
+        inputValue={requestNote}
+        onChangeInput={setRequestNote}
+        inputPlaceholder="e.g., Need to push client changes"
+        primaryTitle="Send Request"
+        onPrimary={handleSendRequest}
+      />
+    </>
   )
 }
 
-const s = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, padding: 12, marginBottom: 6 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  info: { flex: 1 },
-  name: { fontSize: 14, fontWeight: '500' },
-  sub: { fontSize: 11, marginTop: 1 },
-  duration: { fontSize: 10, marginTop: 1 },
-  actions: { flexDirection: 'row', gap: 6 },
-  btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1 },
-  btnText: { fontSize: 12, fontWeight: '500' },
-  btnPrimary: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#007AFF' },
-  btnPrimaryText: { fontSize: 12, fontWeight: '600', color: '#fff' },
-  btnDisabled: { opacity: 0.4 },
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 360, borderRadius: 14, padding: 20 },
-  modalTitle: { fontSize: 17, fontWeight: '600' },
-  modalSub: { fontSize: 12, marginTop: 4, marginBottom: 16 },
-  modalLabel: { fontSize: 11, fontWeight: '500', marginBottom: 4 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, fontSize: 14, minHeight: 60 },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 16 },
-  modalBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-})
+// Encapsulates the four mutually-exclusive states of the trailing action: release
+// (mine), claim (available + I have no claim), cancel (I have a pending request),
+// request (occupied + I have no claim). Kept inline since it has zero reuse outside this row.
+function ActionButton({
+  isMine,
+  available,
+  hasRequest,
+  blockedByMine,
+  onClaim,
+  onRelease,
+  onRequest,
+  onCancelRequest,
+}: {
+  isMine: boolean
+  available: boolean
+  hasRequest: boolean
+  blockedByMine: boolean
+  onClaim: () => void
+  onRelease: () => void
+  onRequest: () => void
+  onCancelRequest: () => void
+}) {
+  if (isMine) return <Button title="Release" variant="tinted" size="sm" onPress={onRelease} />
+  if (available && !blockedByMine) return <Button title="Claim" variant="filled" size="sm" onPress={onClaim} />
+  if (available && blockedByMine) {
+    return (
+      <View style={{ paddingHorizontal: spacing.sm }}>
+        <Text variant="caption2" color="tertiary">—</Text>
+      </View>
+    )
+  }
+  if (hasRequest) return <Button title="Cancel" variant="tinted" size="sm" destructive onPress={onCancelRequest} />
+  return <Button title="Request" variant="gray" size="sm" onPress={onRequest} />
+}
