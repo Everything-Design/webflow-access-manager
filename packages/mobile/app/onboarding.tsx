@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View, TextInput } from 'react-native'
 import { router } from 'expo-router'
 import { useAuthStore } from '@wam/shared'
@@ -12,10 +12,22 @@ import { Text, Button, Card, IconCircle, spacing, radius } from '../ui'
 export default function OnboardingScreen() {
   const t = useTheme()
   const signInManually = useAuthStore((s) => s.signInManually)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const isFirebaseReady = useAuthStore((s) => s.isFirebaseReady)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Firebase's onAuthChanged listener fires asynchronously after signInAnonymously
+  // resolves, so we can't navigate immediately — index.tsx would still see
+  // isAuthenticated=false and bounce us back here. Route only once the store has
+  // caught up, which happens on the next render after the listener writes the user.
+  useEffect(() => {
+    if (isAuthenticated && isFirebaseReady) {
+      router.replace('/')
+    }
+  }, [isAuthenticated, isFirebaseReady])
 
   const canSubmit = name.trim().length > 0 && email.trim().length > 0 && !isSubmitting
 
@@ -24,9 +36,8 @@ export default function OnboardingScreen() {
     setIsSubmitting(true)
     try {
       await signInManually(name, email)
-      // authStore's onAuthChanged listener picks it up from here and the gate routes
-      // us to ClaimAdmin or PendingApproval depending on /admin state.
-      router.replace('/')
+      // Don't navigate here — the useEffect above does it once Firebase Auth has
+      // actually told the store we're signed in.
     } catch (err) {
       console.error('[Onboarding] Manual sign-in failed:', err)
       const msg = err instanceof Error ? err.message : 'Could not sign in'
