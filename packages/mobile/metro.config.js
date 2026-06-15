@@ -21,6 +21,19 @@ if (!usingBundled) {
   config.watchFolders = [sharedRoot]
 }
 
+// Tell Metro to ALWAYS look in mobile's own node_modules and the workspace root's
+// node_modules — regardless of where the importing file lives. Without this, files
+// inside packages/shared/src/ (outside the mobile project) can't resolve their deps
+// (firebase, zustand) because Metro's default node walk-up from those source paths
+// doesn't pass through mobile/node_modules.
+//
+// Keep the default hierarchical lookup enabled — Metro will still walk up from the
+// importing file as a fallback, which is what we want for any odd transitive dep.
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(projectRoot, '../../node_modules'),
+]
+
 const upstreamResolveRequest = config.resolver.resolveRequest
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === '@wam/shared') {

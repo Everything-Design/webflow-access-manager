@@ -1,96 +1,132 @@
-import { useEffect, useState } from 'react'
-import { View } from 'react-native'
+import { useState } from 'react'
+import { View, TextInput } from 'react-native'
 import { router } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
-import * as Google from 'expo-auth-session/providers/google'
-import { authFirebase } from '@wam/shared'
+import { useAuthStore } from '@wam/shared'
 import { useTheme } from '../utils/theme'
-import { Text, Button, Card, IconCircle, spacing } from '../ui'
-import { GOOGLE_OAUTH } from '../constants/googleOAuth'
+import { Text, Button, Card, IconCircle, spacing, radius } from '../ui'
 
-WebBrowser.maybeCompleteAuthSession()
+// Temporary manual onboarding while Google sign-in is unavailable in Expo Go (the
+// embedded webview is blocked by Google's modern OAuth policy). Restore the Google
+// flow once the standalone APK / iOS build is ready.
 
 export default function OnboardingScreen() {
   const t = useTheme()
-  const [isExchanging, setIsExchanging] = useState(false)
+  const signInManually = useAuthStore((s) => s.signInManually)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: GOOGLE_OAUTH.webClientId,
-    iosClientId: GOOGLE_OAUTH.iosClientId,
-    androidClientId: GOOGLE_OAUTH.androidClientId,
-  })
+  const canSubmit = name.trim().length > 0 && email.trim().length > 0 && !isSubmitting
 
-  useEffect(() => {
-    if (!response) return
-    if (response.type === 'error') {
-      setError(response.error?.message ?? 'Sign-in failed')
-      return
-    }
-    if (response.type === 'success' && response.params.id_token) {
-      setIsExchanging(true)
-      setError(null)
-      authFirebase
-        .signInWithGoogleIdToken(response.params.id_token)
-        .then(() => router.replace('/'))
-        .catch((err) => {
-          console.error('[Onboarding] Firebase credential exchange failed:', err)
-          const msg = err instanceof Error ? err.message : 'Sign-in failed'
-          setError(msg.replace(/^Firebase:\s*/, ''))
-        })
-        .finally(() => setIsExchanging(false))
-    } else if (response.type === 'success') {
-      setError('Google did not return an id_token. Check the OAuth client config.')
-    }
-  }, [response])
-
-  const handleSignIn = async () => {
+  const handleSubmit = async () => {
     setError(null)
+    setIsSubmitting(true)
     try {
-      await promptAsync()
+      await signInManually(name, email)
+      // authStore's onAuthChanged listener picks it up from here and the gate routes
+      // us to ClaimAdmin or PendingApproval depending on /admin state.
+      router.replace('/')
     } catch (err) {
-      console.error('[Onboarding] promptAsync threw:', err)
-      setError(err instanceof Error ? err.message : 'Could not open Google sign-in')
+      console.error('[Onboarding] Manual sign-in failed:', err)
+      const msg = err instanceof Error ? err.message : 'Could not sign in'
+      setError(msg.replace(/^Firebase:\s*/, ''))
+      setIsSubmitting(false)
     }
   }
 
-  const isLoading = isExchanging || !request
-
   return (
     <View style={{ flex: 1, backgroundColor: t.bgGrouped, justifyContent: 'center', padding: spacing.xxl }}>
-      <View style={{ gap: spacing.xxl, alignItems: 'center' }}>
-        <IconCircle emoji="👥" color="accent" size={88} />
-
-        <View style={{ gap: spacing.sm, alignItems: 'center' }}>
-          <Text variant="title1" align="center">
-            Webflow Access Manager
-          </Text>
-          <Text
-            variant="subheadline"
-            color="secondary"
-            align="center"
-            style={{ maxWidth: 300 }}
-          >
-            Sign in with Google to coordinate Webflow account access with your team.
-          </Text>
+      <View style={{ gap: spacing.xxl, alignItems: 'stretch' }}>
+        <View style={{ gap: spacing.lg, alignItems: 'center' }}>
+          <IconCircle emoji="👥" color="accent" size={88} />
+          <View style={{ gap: spacing.sm, alignItems: 'center' }}>
+            <Text variant="title1" align="center">
+              Webflow Access Manager
+            </Text>
+            <Text
+              variant="subheadline"
+              color="secondary"
+              align="center"
+              style={{ maxWidth: 320 }}
+            >
+              Enter your name and email to get started. Your admin will approve you
+              before you can use the app.
+            </Text>
+          </View>
         </View>
 
-        <Button
-          title="Continue with Google"
-          variant="filled"
-          size="lg"
-          fullWidth
-          loading={isLoading}
-          onPress={handleSignIn}
-        />
+        <Card padding="lg">
+          <View style={{ gap: spacing.lg }}>
+            <View style={{ gap: spacing.xs }}>
+              <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Name
+              </Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Your name"
+                placeholderTextColor={t.textTertiary}
+                autoCapitalize="words"
+                autoCorrect={false}
+                style={{
+                  backgroundColor: t.bgGrouped,
+                  borderRadius: radius.md,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.md,
+                  fontSize: 17,
+                  color: t.text,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: spacing.xs }}>
+              <Text variant="caption2" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Email
+              </Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@everything.design"
+                placeholderTextColor={t.textTertiary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={{
+                  backgroundColor: t.bgGrouped,
+                  borderRadius: radius.md,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.md,
+                  fontSize: 17,
+                  color: t.text,
+                }}
+              />
+            </View>
+
+            <Button
+              title="Continue"
+              variant="filled"
+              size="lg"
+              fullWidth
+              loading={isSubmitting}
+              disabled={!canSubmit}
+              onPress={handleSubmit}
+            />
+          </View>
+        </Card>
 
         {error && (
-          <Card tone="danger" padding="md" bordered style={{ alignSelf: 'stretch' }}>
+          <Card tone="danger" padding="md" bordered>
             <Text variant="footnote" color="danger">
               {error}
             </Text>
           </Card>
         )}
+
+        <Text variant="caption1" color="tertiary" align="center" style={{ paddingHorizontal: spacing.lg }}>
+          Google sign-in is temporarily disabled. It'll come back once we're testing
+          in a real build outside Expo Go.
+        </Text>
       </View>
     </View>
   )

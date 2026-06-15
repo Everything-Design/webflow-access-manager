@@ -14,7 +14,7 @@
 export const GOOGLE_OAUTH = {
   // For Expo Go on either platform. Generate this in the Cloud Console as "Web application"
   // and add the Expo proxy redirect URI: https://auth.expo.io/@saurabh_es/webflow-access-manager
-  webClientId: '',
+  webClientId: '1069127337276-kralv5oc6psk9rqkhsrd3ufhfe3s10am.apps.googleusercontent.com',
 
   // From the existing GoogleService-Info.plist. Standalone iOS builds only — Expo Go
   // ignores this and uses webClientId via the proxy.

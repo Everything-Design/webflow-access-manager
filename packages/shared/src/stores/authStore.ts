@@ -16,6 +16,10 @@ export interface AuthState {
   init: () => void
   cleanup: () => void
   signInWithGoogle: () => Promise<void>
+  // Temporary path for environments where Google sign-in is unavailable (Expo Go).
+  // Creates an anonymous Firebase Auth session, stamps the display name, then surfaces
+  // the email through /team/{uid}. Same downstream gates (claim admin, pending approval).
+  signInManually: (name: string, email: string) => Promise<void>
   signOut: () => Promise<void>
   updateUser: (updates: Partial<Pick<User, 'name' | 'profileIcon' | 'profileColor'>>) => Promise<void>
   // Subscribe to your own /team/{uid} record so status changes (admin approve/reject)
@@ -24,6 +28,10 @@ export interface AuthState {
 }
 
 let authUnsubscribe: Unsubscribe | null = null
+
+// Set immediately before signInAnonymously and consumed by the onAuthChanged listener.
+// Lets manual sign-in flow inject the email Firebase Auth otherwise can't hold.
+let pendingManualProfile: { name: string; email: string } | null = null
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: null,
@@ -57,10 +65,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const deviceId = await device.getDeviceId()
 
         const cached = get().currentUser
+        // pendingManualProfile takes precedence for anonymous sessions where firebaseUser
+        // has neither displayName nor email reliably populated.
+        const manual = pendingManualProfile
+        pendingManualProfile = null
         const baseUser: Omit<User, 'status'> = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || cached?.name || '',
-          email: firebaseUser.email || undefined,
+          name: firebaseUser.displayName || manual?.name || cached?.name || '',
+          email: firebaseUser.email || manual?.email || cached?.email || undefined,
           deviceId,
           isOnline: true,
           lastSeen: Date.now() / 1000,
@@ -106,6 +118,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signInWithGoogle: async () => {
     await authFirebase.signInWithGoogle()
+  },
+
+  signInManually: async (name, email) => {
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim().toLowerCase()
+    if (!trimmedName) throw new Error('Name is required')
+    if (!trimmedEmail) throw new Error('Email is required')
+    // Park the values where onAuthChanged can find them; signInAnonymously fires next
+    // and the listener picks them up to populate the team record.
+    pendingManualProfile = { name: trimmedName, email: trimmedEmail }
+    try {
+      await authFirebase.signInAnonymouslyWithDisplayName(trimmedName)
+    } catch (err) {
+      pendingManualProfile = null
+      throw err
+    }
   },
 
   signOut: async () => {
