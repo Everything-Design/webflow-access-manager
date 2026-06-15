@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View } from 'react-native'
+import { router } from 'expo-router'
 import { useAuthStore, useAdminStore } from '@wam/shared'
 import { useTheme } from '../utils/theme'
 import { Text, Button, Card, IconCircle, Tag, spacing } from '../ui'
@@ -9,8 +10,20 @@ export default function ClaimAdminScreen() {
   const currentUser = useAuthStore((s) => s.currentUser)
   const signOut = useAuthStore((s) => s.signOut)
   const claim = useAdminStore((s) => s.claim)
+  const adminUid = useAdminStore((s) => s.adminUid)
   const [isClaiming, setIsClaiming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Once the observers have caught up and an admin exists, route back through the
+  // gate at '/' so it can decide where to send the user (dashboard if they're the
+  // admin and approved, pending-approval otherwise). Without this redirect the
+  // screen stays mounted with the claim spinner running forever even though the
+  // write succeeded.
+  useEffect(() => {
+    if (adminUid && currentUser?.status === 'approved') {
+      router.replace('/')
+    }
+  }, [adminUid, currentUser?.status])
 
   const onClaim = async () => {
     if (!currentUser) return
@@ -18,6 +31,8 @@ export default function ClaimAdminScreen() {
     setError(null)
     try {
       await claim(currentUser.id)
+      // Spinner stays on while we wait for the observers to flip state; the effect
+      // above will then redirect us.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not claim admin')
       setIsClaiming(false)

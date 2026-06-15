@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { View } from 'react-native'
+import { router } from 'expo-router'
 import { useAuthStore } from '@wam/shared'
 import { useTheme } from '../utils/theme'
 import { Text, Button, IconCircle, Tag, spacing } from '../ui'
@@ -14,6 +15,15 @@ export default function PendingApprovalScreen() {
 
   const status = currentUser?.status
   const isRejected = status === 'rejected'
+
+  // The moment the admin flips our status to 'approved' the listener writes back
+  // here — route through '/' so the gate can land us on the dashboard. Without
+  // this effect we'd sit on this screen indefinitely.
+  useEffect(() => {
+    if (status === 'approved') {
+      router.replace('/')
+    }
+  }, [status])
 
   return (
     <View
