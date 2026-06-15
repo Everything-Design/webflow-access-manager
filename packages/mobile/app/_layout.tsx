@@ -2,19 +2,31 @@ import { useEffect, useRef } from 'react'
 import { ActivityIndicator, View, AppState as RNAppState } from 'react-native'
 import { Slot } from 'expo-router'
 import * as Notifications from 'expo-notifications'
+// @ts-expect-error — getReactNativePersistence is intentionally not in firebase/auth's
+// public type surface for web, but it ships and works on React Native.
+import { getReactNativePersistence } from 'firebase/auth'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { configurePlatform, initFirebase, useAuthStore, useAppStore, useAdminStore, firebaseService } from '@wam/shared'
 import { mobileAdapters } from '../adapters/mobileAdapters'
 
 configurePlatform(mobileAdapters)
-initFirebase({
-  apiKey: 'AIzaSyDeKYyDJe226JvamBZi_n6XRxDDfU6Qve0',
-  authDomain: 'webflow-team-login.firebaseapp.com',
-  projectId: 'webflow-team-login',
-  storageBucket: 'webflow-team-login.firebasestorage.app',
-  messagingSenderId: '1069127337276',
-  appId: '1:1069127337276:ios:9f42018b28cfdc60678a39',
-  databaseURL: 'https://webflow-team-login-default-rtdb.asia-southeast1.firebasedatabase.app',
-})
+initFirebase(
+  {
+    apiKey: 'AIzaSyDeKYyDJe226JvamBZi_n6XRxDDfU6Qve0',
+    authDomain: 'webflow-team-login.firebaseapp.com',
+    projectId: 'webflow-team-login',
+    storageBucket: 'webflow-team-login.firebasestorage.app',
+    messagingSenderId: '1069127337276',
+    appId: '1:1069127337276:ios:9f42018b28cfdc60678a39',
+    databaseURL: 'https://webflow-team-login-default-rtdb.asia-southeast1.firebasedatabase.app',
+  },
+  {
+    // Without this, Firebase Auth defaults to in-memory persistence on RN. Every cold
+    // start = new anonymous UID = broken approval flow. AsyncStorage persists across
+    // force-closes so the same UID is reused.
+    authPersistence: getReactNativePersistence(AsyncStorage),
+  },
+)
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

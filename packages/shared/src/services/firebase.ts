@@ -1,6 +1,6 @@
 import { initializeApp, FirebaseApp } from 'firebase/app'
 import { getDatabase, Database } from 'firebase/database'
-import { getAuth, Auth } from 'firebase/auth'
+import { getAuth, initializeAuth, Auth } from 'firebase/auth'
 
 export interface FirebaseConfig {
   apiKey: string
@@ -12,16 +12,32 @@ export interface FirebaseConfig {
   databaseURL: string
 }
 
+export interface InitOptions {
+  // Optional persistence layer for Firebase Auth. Desktop/web environments use
+  // browser localStorage by default (no action needed). React Native must pass in
+  // getReactNativePersistence(AsyncStorage) — otherwise Auth defaults to memory and
+  // every cold start creates a new anonymous user with a different UID, which
+  // breaks the approval flow.
+  authPersistence?: unknown
+}
+
 let app: FirebaseApp | null = null
 let database: Database | null = null
 let auth: Auth | null = null
 
-export function initFirebase(config: FirebaseConfig) {
+export function initFirebase(config: FirebaseConfig, options: InitOptions = {}) {
   if (app) return
   app = initializeApp(config)
   database = getDatabase(app)
-  auth = getAuth(app)
-  console.log('[Firebase] Initialized for project:', config.projectId)
+  if (options.authPersistence) {
+    // Use initializeAuth with the supplied persistence — this MUST run before any
+    // getAuth(app) call elsewhere, which is why the auth instance is cached at this
+    // module level rather than re-resolved per caller.
+    auth = initializeAuth(app, { persistence: options.authPersistence as never })
+  } else {
+    auth = getAuth(app)
+  }
+  console.log('[Firebase] Initialized for project:', config.projectId, options.authPersistence ? '(with custom persistence)' : '')
 }
 
 export function getDb(): Database {
