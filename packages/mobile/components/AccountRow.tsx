@@ -1,10 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
-import { View, Alert } from 'react-native'
-import { useAppStore, useAuthStore, isAccountAvailable, formatDuration, getAccountDisplayName } from '@wam/shared'
+import { View, Pressable, Alert } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { useAppStore, useAuthStore, useAdminStore, isAccountAvailable, formatDuration, getAccountDisplayName } from '@wam/shared'
 import type { Account } from '@wam/shared'
+import { useTheme } from '../utils/theme'
 import { Text, Button, StatusDot, Sheet, ListRow, haptic, spacing } from '../ui'
 
 export function AccountRow({ account }: { account: Account }) {
+  const t = useTheme()
   const currentUser = useAuthStore((s) => s.currentUser)
   const accounts = useAppStore((s) => s.accounts)
   const accessRequests = useAppStore((s) => s.accessRequests)
@@ -12,6 +15,9 @@ export function AccountRow({ account }: { account: Account }) {
   const releaseAccount = useAppStore((s) => s.releaseAccount)
   const requestAccess = useAppStore((s) => s.requestAccess)
   const cancelRequest = useAppStore((s) => s.cancelRequest)
+  const deleteAccountSlot = useAppStore((s) => s.deleteAccountSlot)
+  const adminUid = useAdminStore((s) => s.adminUid)
+  const isAdmin = currentUser?.id === adminUid
 
   const myAccount = useMemo(
     () => accounts.find((a) => a.occupiedBy === currentUser?.id),
@@ -69,6 +75,32 @@ export function AccountRow({ account }: { account: Account }) {
     claimAccount(account, currentUser)
   }
 
+  const handleDelete = () => {
+    const name = getAccountDisplayName(account.id, account.label)
+    Alert.alert(
+      `Delete ${name}?`,
+      account.isOccupied
+        ? `This slot is currently used by ${account.occupiedByName ?? 'someone'}. Deleting it will end their session immediately.`
+        : 'Anyone with a pending request for this slot will see it disappear.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            haptic.warn()
+            try {
+              await deleteAccountSlot(account.id)
+            } catch (err) {
+              console.error('[AccountRow] delete failed:', err)
+              Alert.alert("Couldn't delete", err instanceof Error ? err.message : 'Unknown error')
+            }
+          },
+        },
+      ],
+    )
+  }
+
   // Stable callback — finds the row's own pending request at call time so the closure
   // never holds a stale `accessRequests` snapshot. Without this the trailing arrow
   // would capture an old store snapshot and could cancel the wrong (or no longer
@@ -100,16 +132,33 @@ export function AccountRow({ account }: { account: Account }) {
         title={getAccountDisplayName(account.id, account.label)}
         subtitle={subtitle}
         trailing={
-          <ActionButton
-            isMine={isMyAccount}
-            available={available}
-            hasRequest={hasActiveRequest}
-            blockedByMine={!!myAccount && !isMyAccount}
-            onClaim={handleClaim}
-            onRelease={handleRelease}
-            onRequest={() => setShowRequestModal(true)}
-            onCancelRequest={handleCancelRequest}
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+            <ActionButton
+              isMine={isMyAccount}
+              available={available}
+              hasRequest={hasActiveRequest}
+              blockedByMine={!!myAccount && !isMyAccount}
+              onClaim={handleClaim}
+              onRelease={handleRelease}
+              onRequest={() => setShowRequestModal(true)}
+              onCancelRequest={handleCancelRequest}
+            />
+            {isAdmin && (
+              <Pressable
+                onPress={handleDelete}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  padding: spacing.sm,
+                  borderRadius: 999,
+                  opacity: pressed ? 0.5 : 1,
+                  backgroundColor: pressed ? t.dangerTint : 'transparent',
+                })}
+                accessibilityLabel="Delete account slot"
+              >
+                <Ionicons name="trash-outline" size={18} color={t.red} />
+              </Pressable>
+            )}
+          </View>
         }
       />
 
