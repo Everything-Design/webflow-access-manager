@@ -38,17 +38,18 @@ export function observeConnection(callback: (connected: boolean) => void): Unsub
 
 // ─── Admin (single-tenant: one UID lives at /admin/uid) ───
 
-export function observeAdmin(callback: (adminUid: string | null) => void): Unsubscribe {
+export function observeAdmin(
+  callback: (adminUid: string | null, error?: Error) => void
+): Unsubscribe {
   return onValue(
     ref(getDb(), 'admin/uid'),
     (snapshot) => callback(snapshot.val() ?? null),
     (error) => {
-      // If rules deny the read (e.g. published rules don't match this client yet) we still
-      // need the gate to advance — otherwise the app sits on a spinner forever. Surfacing
-      // adminUid=null falls through to the ClaimAdmin screen, where any subsequent write
-      // attempt will produce a real error message instead of a silent hang.
-      console.error('[Firebase] Admin observer error — treating as no admin:', error)
-      callback(null)
+      // Don't lie to the gate by reporting "no admin" here — that masks rules-level
+      // permission denials and sends users to the ClaimAdmin screen even when an admin
+      // already exists. Surface the error so the gate can show a remediation hint.
+      console.error('[Firebase] Admin observer error:', error)
+      callback(null, error as Error)
     }
   )
 }

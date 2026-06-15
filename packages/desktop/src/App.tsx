@@ -34,6 +34,7 @@ function AppGate({ children }: { children: React.ReactNode }) {
   const currentUser = useAuthStore((s) => s.currentUser)
   const adminUid = useAdminStore((s) => s.adminUid)
   const adminLoaded = useAdminStore((s) => s.isLoaded)
+  const adminReadFailed = useAdminStore((s) => s.readFailed)
   const subscribeOwnStatus = useAuthStore((s) => s.subscribeOwnStatus)
 
   // Keep my own status fresh — admin approval propagates here without a refresh.
@@ -45,6 +46,10 @@ function AppGate({ children }: { children: React.ReactNode }) {
   if (isAuthLoading) return <Spinner />
   if (!isAuthenticated) return <Onboarding />
   if (!isFirebaseReady || !adminLoaded) return <Spinner />
+
+  // The admin read failed (most often: rules deny it). Treat as pending so we don't
+  // send the user into a ClaimAdmin write that's guaranteed to also fail.
+  if (adminReadFailed) return <PendingApproval />
 
   // No admin yet → first signed-in user can claim it
   if (adminUid === null) return <ClaimAdmin />
