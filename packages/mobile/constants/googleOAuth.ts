@@ -25,5 +25,5 @@ export const GOOGLE_OAUTH = {
   //   - SHA-1: the fingerprint of the keystore EAS will sign with. After your first EAS
   //     build, run `eas credentials` to print the SHA-1 and paste it into the Cloud Console
   //     client.
-  androidClientId: '',
+  androidClientId: '1069127337276-65cj0b5mbblb751nocb21gahs21a4c0g.apps.googleusercontent.com',
 }
