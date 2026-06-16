@@ -26,7 +26,11 @@ export default function OnboardingScreen() {
 
   // Google sign-in hook — picks iosClientId / androidClientId / webClientId at runtime
   // based on the platform and whether we're in Expo Go vs a standalone build.
-  const [googleRequest, googleResponse, promptAsync] = Google.useAuthRequest({
+  // useIdTokenAuthRequest (not useAuthRequest): we need a Google *id_token* to hand to
+  // Firebase signInWithCredential. The plain auth-code flow returns a `code`, not an
+  // id_token, which left us in the "no id_token" branch below. This requests the id_token
+  // directly — it lands in googleResponse.params.id_token.
+  const [googleRequest, googleResponse, promptAsync] = Google.useIdTokenAuthRequest({
     webClientId: GOOGLE_OAUTH.webClientId,
     iosClientId: GOOGLE_OAUTH.iosClientId,
     androidClientId: GOOGLE_OAUTH.androidClientId,
