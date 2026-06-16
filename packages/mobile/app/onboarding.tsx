@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react'
 import { View, TextInput, Pressable } from 'react-native'
 import { router } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
-import * as Google from 'expo-auth-session/providers/google'
+import {
+  GoogleSignin,
+  statusCodes,
+  isSuccessResponse,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin'
 import { authFirebase, useAuthStore } from '@wam/shared'
 import { useTheme } from '../utils/theme'
 import { Text, Button, Card, IconCircle, spacing, radius } from '../ui'
 import { GOOGLE_OAUTH } from '../constants/googleOAuth'
 
-// Closes the OAuth popup cleanly once the redirect resolves. Required by expo-auth-session.
-WebBrowser.maybeCompleteAuthSession()
+// Native Google Sign-In (Play Services / Credential Manager) — replaces the
+// expo-auth-session browser-redirect flow, which Google's OAuth policy blocks in
+// standalone builds. webClientId is required to receive an idToken for Firebase; the
+// Android OAuth client (package + keystore SHA-1) only needs to exist in the project so
+// Google can validate the app signature — its ID isn't referenced here.
+GoogleSignin.configure({
+  webClientId: GOOGLE_OAUTH.webClientId,
+})
 
 export default function OnboardingScreen() {
   const t = useTheme()
@@ -24,18 +34,6 @@ export default function OnboardingScreen() {
   const [isExchanging, setIsExchanging] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Google sign-in hook — picks iosClientId / androidClientId / webClientId at runtime
-  // based on the platform and whether we're in Expo Go vs a standalone build.
-  // useIdTokenAuthRequest (not useAuthRequest): we need a Google *id_token* to hand to
-  // Firebase signInWithCredential. The plain auth-code flow returns a `code`, not an
-  // id_token, which left us in the "no id_token" branch below. This requests the id_token
-  // directly — it lands in googleResponse.params.id_token.
-  const [googleRequest, googleResponse, promptAsync] = Google.useIdTokenAuthRequest({
-    webClientId: GOOGLE_OAUTH.webClientId,
-    iosClientId: GOOGLE_OAUTH.iosClientId,
-    androidClientId: GOOGLE_OAUTH.androidClientId,
-  })
-
   // Firebase's onAuthChanged listener fires asynchronously after any sign-in resolves,
   // so we can't navigate immediately — index.tsx would still see isAuthenticated=false
   // and bounce back here. Watch the store and route once it's caught up.
@@ -45,37 +43,43 @@ export default function OnboardingScreen() {
     }
   }, [isAuthenticated, isFirebaseReady])
 
-  // When the Google OAuth flow finishes, hand the id_token to Firebase. The authStore
-  // listener picks up the new session from there.
-  useEffect(() => {
-    if (!googleResponse) return
-    if (googleResponse.type === 'error') {
-      setError(googleResponse.error?.message ?? 'Google sign-in failed')
-      return
-    }
-    if (googleResponse.type === 'success' && googleResponse.params.id_token) {
-      setIsExchanging(true)
-      setError(null)
-      authFirebase
-        .signInWithGoogleIdToken(googleResponse.params.id_token)
-        .catch((err) => {
-          console.error('[Onboarding] Firebase credential exchange failed:', err)
-          const msg = err instanceof Error ? err.message : 'Sign-in failed'
-          setError(msg.replace(/^Firebase:\s*/, ''))
-        })
-        .finally(() => setIsExchanging(false))
-    } else if (googleResponse.type === 'success') {
-      setError('Google did not return an id_token. Check the OAuth client config.')
-    }
-  }, [googleResponse])
-
+  // Native Google sign-in: get an idToken from Play Services, hand it to Firebase. The
+  // authStore listener picks up the new session and the effect above routes onward.
   const handleGoogleSignIn = async () => {
     setError(null)
+    setIsExchanging(true)
     try {
-      await promptAsync()
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+      const response = await GoogleSignin.signIn()
+      if (!isSuccessResponse(response)) {
+        // User dismissed the account picker — not an error.
+        setIsExchanging(false)
+        return
+      }
+      const idToken = response.data.idToken
+      if (!idToken) {
+        setError('Google did not return an id_token. Check the OAuth client config.')
+        setIsExchanging(false)
+        return
+      }
+      await authFirebase.signInWithGoogleIdToken(idToken)
+      // Leave isExchanging on; the isAuthenticated effect navigates away on success.
     } catch (err) {
-      console.error('[Onboarding] promptAsync threw:', err)
-      setError(err instanceof Error ? err.message : 'Could not open Google sign-in')
+      if (isErrorWithCode(err)) {
+        if (err.code === statusCodes.SIGN_IN_CANCELLED) {
+          setIsExchanging(false)
+          return
+        }
+        if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          setError('Google Play Services is unavailable on this device.')
+          setIsExchanging(false)
+          return
+        }
+      }
+      console.error('[Onboarding] Google sign-in failed:', err)
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed'
+      setError(msg.replace(/^Firebase:\s*/, ''))
+      setIsExchanging(false)
     }
   }
 
@@ -95,7 +99,7 @@ export default function OnboardingScreen() {
     }
   }
 
-  const googleLoading = isExchanging || !googleRequest
+  const googleLoading = isExchanging
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bgGrouped, justifyContent: 'center', padding: spacing.xxl }}>
