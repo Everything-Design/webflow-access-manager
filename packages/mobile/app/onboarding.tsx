@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, TextInput, Pressable } from 'react-native'
 import { router } from 'expo-router'
+import Constants from 'expo-constants'
 import {
   GoogleSignin,
   statusCodes,
@@ -12,14 +13,22 @@ import { useTheme } from '../utils/theme'
 import { Text, Button, Card, IconCircle, spacing, radius } from '../ui'
 import { GOOGLE_OAUTH } from '../constants/googleOAuth'
 
+// @react-native-google-signin is a native module — it is NOT present in Expo Go (a fixed
+// prebuilt client), so touching it there throws "RNGoogleSignin could not be found".
+// Detect Expo Go and skip all native calls, falling back to manual sign-in for dev
+// testing. Native Google only runs in development/standalone builds.
+const isExpoGo = Constants.executionEnvironment === 'storeClient'
+
 // Native Google Sign-In (Play Services / Credential Manager) — replaces the
 // expo-auth-session browser-redirect flow, which Google's OAuth policy blocks in
 // standalone builds. webClientId is required to receive an idToken for Firebase; the
 // Android OAuth client (package + keystore SHA-1) only needs to exist in the project so
 // Google can validate the app signature — its ID isn't referenced here.
-GoogleSignin.configure({
-  webClientId: GOOGLE_OAUTH.webClientId,
-})
+if (!isExpoGo) {
+  GoogleSignin.configure({
+    webClientId: GOOGLE_OAUTH.webClientId,
+  })
+}
 
 export default function OnboardingScreen() {
   const t = useTheme()
@@ -27,7 +36,7 @@ export default function OnboardingScreen() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const isFirebaseReady = useAuthStore((s) => s.isFirebaseReady)
 
-  const [showManual, setShowManual] = useState(false)
+  const [showManual, setShowManual] = useState(isExpoGo)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -46,6 +55,10 @@ export default function OnboardingScreen() {
   // Native Google sign-in: get an idToken from Play Services, hand it to Firebase. The
   // authStore listener picks up the new session and the effect above routes onward.
   const handleGoogleSignIn = async () => {
+    if (isExpoGo) {
+      setError('Google sign-in needs a development or standalone build — use email here in Expo Go.')
+      return
+    }
     setError(null)
     setIsExchanging(true)
     try {
@@ -210,18 +223,20 @@ export default function OnboardingScreen() {
                 onPress={handleManualSubmit}
               />
 
-              <Pressable
-                onPress={() => {
-                  setShowManual(false)
-                  setError(null)
-                }}
-                hitSlop={8}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, alignSelf: 'center' })}
-              >
-                <Text variant="footnote" color="secondary">
-                  Back to Google sign-in
-                </Text>
-              </Pressable>
+              {!isExpoGo && (
+                <Pressable
+                  onPress={() => {
+                    setShowManual(false)
+                    setError(null)
+                  }}
+                  hitSlop={8}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, alignSelf: 'center' })}
+                >
+                  <Text variant="footnote" color="secondary">
+                    Back to Google sign-in
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </Card>
         )}
