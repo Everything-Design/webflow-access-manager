@@ -9,7 +9,11 @@ export interface AppState {
   accounts: Account[]
   clientAccounts: ClientAccount[]
   team: User[]
+  // accessRequests: pending requests only — used for "active request" UI checks
   accessRequests: AccessRequest[]
+  // allAccessRequests: everything we've seen (incl. resolved) — kept in memory so the
+  // recent-activity view can render. Trimmed to the last 25 for memory bounds.
+  allAccessRequests: AccessRequest[]
   pendingRequestsForCurrentUser: AccessRequest[]
   pendingTeamMembers: User[]
   isConnected: boolean
@@ -19,8 +23,10 @@ export interface AppState {
 
   claimAccount: (account: Account, user: User) => Promise<void>
   releaseAccount: (accountId: string) => Promise<void>
+  forceReleaseAccount: (accountId: string) => Promise<void>
   createAccountSlot: (accountId: string, label?: string) => Promise<void>
   deleteAccountSlot: (accountId: string) => Promise<void>
+  updateAccountLabel: (accountId: string, label: string) => Promise<void>
 
   setClientAccount: (clientName: string, user: User) => Promise<void>
   clearClientAccount: (clientAccountId: string) => Promise<void>
@@ -42,6 +48,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clientAccounts: [],
   team: [],
   accessRequests: [],
+  allAccessRequests: [],
   pendingRequestsForCurrentUser: [],
   pendingTeamMembers: [],
   isConnected: false,
@@ -117,8 +124,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
 
         const pending = allRequests.filter((r) => r.status === 'pending')
+
+        // Keep the last 25 requests (any status) for the "Recent activity" view.
+        // Sort by requestedAt desc so newest first, slice for memory bound.
+        const sortedAll = [...allRequests].sort((a, b) => (b.requestedAt ?? 0) - (a.requestedAt ?? 0))
+        const allAccessRequests = sortedAll.slice(0, 25)
+
         set({
           accessRequests: pending,
+          allAccessRequests,
           pendingRequestsForCurrentUser: incomingPending,
         })
       })
@@ -154,6 +168,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteAccountSlot: async (accountId) => {
     await firebaseService.deleteAccountSlot(accountId)
+  },
+
+  updateAccountLabel: async (accountId, label) => {
+    await firebaseService.updateAccountLabel(accountId, label.trim())
+  },
+
+  // Admin override of releaseAccount. Same side-effect surface (auto-resolves stale
+  // pending requests) so the rest of the UI doesn't need a different code path.
+  forceReleaseAccount: async (accountId) => {
+    await firebaseService.forceReleaseAccount(accountId)
+    const stalePending = get().accessRequests.filter(
+      (r) => r.accountId === accountId && r.status === 'pending'
+    )
+    for (const req of stalePending) {
+      try {
+        await firebaseService.updateAccessRequestStatus(req.id, 'released')
+      } catch (err) {
+        console.warn('[AppStore] Failed to auto-resolve stale request after force release:', req.id, err)
+      }
+    }
   },
 
   setClientAccount: async (clientName, user) => {

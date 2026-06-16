@@ -256,6 +256,26 @@ export async function createAccountSlot(accountId: string, label?: string): Prom
   })
 }
 
+// Admin-only: rename a slot's label without touching occupancy state. Rules enforce
+// admin-only at the .write level on /accounts/{accountId}/label.
+export async function updateAccountLabel(accountId: string, label: string): Promise<void> {
+  await update(ref(getDb(), `accounts/${accountId}`), { label })
+}
+
+// Admin-only: same effect as releaseAccount but the caller doesn't have to be the
+// occupier. Rules check that auth.uid is /admin/uid and allow the occupiedBy write.
+// Behaviour mirrors releaseAccount — the appStore wrapper auto-resolves stale
+// pending requests after this returns.
+export async function forceReleaseAccount(accountId: string): Promise<void> {
+  await update(ref(getDb(), `accounts/${accountId}`), {
+    isOccupied: false,
+    occupiedBy: null,
+    occupiedByName: null,
+    occupiedSince: null,
+    hasPendingRequest: false,
+  })
+}
+
 // ─── Client Accounts ───
 
 export function observeClientAccounts(callback: (accounts: ClientAccount[]) => void): Unsubscribe {
