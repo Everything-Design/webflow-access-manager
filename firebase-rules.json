@@ -64,6 +64,10 @@
           ".validate": "newData.val() === null || newData.isNumber()"
         },
 
+        "lastReleasedAt": {
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+
         "hasPendingRequest": {
           ".validate": "newData.isBoolean()"
         }

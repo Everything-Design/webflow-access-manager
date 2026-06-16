@@ -41,7 +41,15 @@ export function Settings({ onBack }: SettingsProps) {
   const { isConnected, accounts, clientAccounts, team, pendingTeamMembers, approveTeamMember, rejectTeamMember, removeTeamMember } =
     useAppStore()
   const adminUid = useAdminStore((s) => s.adminUid)
+  const transferAdmin = useAdminStore((s) => s.transfer)
   const isAdmin = currentUser?.id === adminUid
+
+  const handleTransferAdmin = (uid: string, name: string) => {
+    if (!confirm(`Transfer admin to ${name}? You will become a regular member after this. The change takes effect immediately on every device.`)) return
+    transferAdmin(uid).catch((err) => {
+      alert(`Couldn't transfer: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    })
+  }
 
   const onlineCount = team.filter((m) => m.status === 'approved' && m.isOnline).length
   const approvedCount = team.filter((m) => m.status === 'approved').length
@@ -190,14 +198,23 @@ export function Settings({ onBack }: SettingsProps) {
                       <p className="text-caption text-text-tertiary truncate">{m.email}</p>
                     </div>
                     {isAdmin && m.id !== currentUser?.id && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`Remove ${m.name} from the team?`)) removeTeamMember(m.id)
-                        }}
-                        className="text-caption2 text-accent-red hover:underline"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => handleTransferAdmin(m.id, m.name)}
+                          className="text-caption2 text-accent-blue hover:underline"
+                          title="Hand the admin role to this member"
+                        >
+                          Make admin
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Remove ${m.name} from the team?`)) removeTeamMember(m.id)
+                          }}
+                          className="text-caption2 text-accent-red hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { View, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useAppStore, useAuthStore, formatDuration, getAccountDisplayName } from '@wam/shared'
+import { useAppStore, useAuthStore, useAdminStore, formatDuration, getAccountDisplayName } from '@wam/shared'
 import type { AccessRequest } from '@wam/shared'
 import { AccessRequestRow } from '../../components/AccessRequestRow'
 import { useTheme } from '../../utils/theme'
@@ -12,17 +12,19 @@ export default function RequestsScreen() {
   const pendingRequests = useAppStore((s) => s.pendingRequestsForCurrentUser)
   const allAccessRequests = useAppStore((s) => s.allAccessRequests)
   const currentUser = useAuthStore((s) => s.currentUser)
+  const adminUid = useAdminStore((s) => s.adminUid)
+  const isAdmin = currentUser?.id === adminUid
 
-  // Recent activity = resolved requests involving me, newest first, capped at 10.
-  // Filter to "involves me" so members don't see unrelated team-wide history; admin
-  // gets a fuller picture from the Dashboard on desktop later if they want it.
+  // Recent activity = resolved requests, newest first, capped at 10. Members see only
+  // their own history (to keep the tab tight + respect lightweight privacy). Admin
+  // sees the whole team's history so they have a single place to spot weird patterns.
   const recent = useMemo(() => {
     if (!currentUser) return []
     return allAccessRequests
       .filter((r) => r.status !== 'pending')
-      .filter((r) => r.requesterId === currentUser.id || r.ownerId === currentUser.id)
+      .filter((r) => isAdmin || r.requesterId === currentUser.id || r.ownerId === currentUser.id)
       .slice(0, 10)
-  }, [allAccessRequests, currentUser])
+  }, [allAccessRequests, currentUser, isAdmin])
 
   const hasPending = pendingRequests.length > 0
 

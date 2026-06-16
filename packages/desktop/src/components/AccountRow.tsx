@@ -111,7 +111,9 @@ export function AccountRow({ account, isAdmin }: AccountRowProps) {
             )}
           </>
         ) : (
-          <p className="text-caption text-accent-green">Available</p>
+          <p className="text-caption text-accent-green">
+            {account.lastReleasedAt ? `Free for ${formatDuration(account.lastReleasedAt)}` : 'Available'}
+          </p>
         )}
       </div>
 

@@ -189,12 +189,16 @@ export function AccountRow({ account }: { account: Account }) {
   }, [account.id, currentUser?.id, cancelRequest])
 
   // Subtitle composes whatever is most useful for the row's current state — falls back
-  // to "Available" so the row height stays constant when status flips.
+  // to "Available" so the row height stays constant when status flips. For free slots
+  // we additionally show how long they've been free so a slot released 30 seconds ago
+  // reads differently from one that's been free for 3 days.
   const subtitle =
     isMyAccount
       ? account.occupiedSince ? `You · ${formatDuration(account.occupiedSince)}` : 'You'
     : !available && account.occupiedByName
       ? `${account.occupiedByName}${account.occupiedSince ? ` · ${formatDuration(account.occupiedSince)}` : ''}`
+    : account.lastReleasedAt
+      ? `Free for ${formatDuration(account.lastReleasedAt)}`
       : 'Available'
 
   return (

@@ -66,6 +66,13 @@ export async function claimAdmin(uid: string): Promise<void> {
   await update(ref(getDb(), `team/${uid}`), { status: 'approved' })
 }
 
+// Hand the admin role to another approved team member. Rules allow the current admin
+// to overwrite /admin/uid (data.child('uid').val() === auth.uid). After this resolves
+// the observer reports the new value and both apps re-route themselves automatically.
+export async function transferAdmin(toUid: string): Promise<void> {
+  await set(ref(getDb(), 'admin/uid'), toUid)
+}
+
 // ─── Team (was /users; now flat under /team) ───
 
 export function observeTeam(callback: (members: User[]) => void): Unsubscribe {
@@ -202,6 +209,7 @@ export function observeAccounts(callback: (accounts: Account[]) => void): Unsubs
             occupiedBy: data.occupiedBy || undefined,
             occupiedByName: data.occupiedByName || undefined,
             occupiedSince: toTimestamp(data.occupiedSince),
+            lastReleasedAt: toTimestamp(data.lastReleasedAt),
             hasPendingRequest: data.hasPendingRequest === true,
           })
         }
@@ -239,6 +247,7 @@ export async function releaseAccount(accountId: string): Promise<void> {
     occupiedBy: null,
     occupiedByName: null,
     occupiedSince: null,
+    lastReleasedAt: serverTimestamp(),
     hasPendingRequest: false,
   })
 }
@@ -272,6 +281,7 @@ export async function forceReleaseAccount(accountId: string): Promise<void> {
     occupiedBy: null,
     occupiedByName: null,
     occupiedSince: null,
+    lastReleasedAt: serverTimestamp(),
     hasPendingRequest: false,
   })
 }

@@ -31,6 +31,9 @@ export interface Account {
   occupiedBy?: string
   occupiedByName?: string
   occupiedSince?: number // seconds since epoch
+  // Stamped whenever the account flips from occupied → free. Lets a row show
+  // "Free for 3 days" vs "Free for 30 sec" so members can read recency at a glance.
+  lastReleasedAt?: number
   hasPendingRequest: boolean
 }
 

@@ -33,16 +33,16 @@ export function Dashboard() {
   const adminUid = useAdminStore((s) => s.adminUid)
   const isAdmin = currentUser?.id === adminUid
 
-  // Recent activity = resolved requests involving the current user, capped at 10.
-  // Admin sees the same view as members — keeps the popup tight; the longer history
-  // can move to Settings later if we hear the team wants it.
+  // Recent activity = resolved requests, capped at 10. Members see only their own
+  // history (keeps the popup tight). Admin sees the full team timeline so they have
+  // a single place to spot patterns.
   const recentRequests = useMemo(() => {
     if (!currentUser) return []
     return allAccessRequests
       .filter((r) => r.status !== 'pending')
-      .filter((r) => r.requesterId === currentUser.id || r.ownerId === currentUser.id)
+      .filter((r) => isAdmin || r.requesterId === currentUser.id || r.ownerId === currentUser.id)
       .slice(0, 10)
-  }, [allAccessRequests, currentUser])
+  }, [allAccessRequests, currentUser, isAdmin])
 
   const handleAddClient = async () => {
     if (!clientName.trim() || !currentUser) return

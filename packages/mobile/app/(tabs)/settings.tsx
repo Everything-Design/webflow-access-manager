@@ -46,6 +46,7 @@ export default function SettingsScreen() {
   const rejectTeamMember = useAppStore((s) => s.rejectTeamMember)
   const removeTeamMember = useAppStore((s) => s.removeTeamMember)
   const adminUid = useAdminStore((s) => s.adminUid)
+  const transferAdmin = useAdminStore((s) => s.transfer)
   const isAdmin = currentUser?.id === adminUid
 
   const onlineCount = team.filter((m) => m.status === 'approved' && m.isOnline).length
@@ -100,6 +101,42 @@ export default function SettingsScreen() {
             })
         },
       },
+    ])
+  }
+
+  // iOS-style admin menu per team member — Make admin (irreversible without their
+  // help), Remove. Each option gets its own confirmation. Skip both when the target
+  // is the current user (you can't transfer admin to yourself, and you can't remove
+  // yourself from the team list — use Sign out).
+  const handleMemberMenu = (uid: string, memberName: string) => {
+    haptic.tap()
+    Alert.alert(memberName, 'Admin actions', [
+      {
+        text: 'Make admin',
+        onPress: () => {
+          Alert.alert(
+            `Transfer admin to ${memberName}?`,
+            'You will become a regular member after this. The change takes effect immediately on every device.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Transfer admin',
+                style: 'destructive',
+                onPress: async () => {
+                  haptic.warn()
+                  try {
+                    await transferAdmin(uid)
+                  } catch (err) {
+                    Alert.alert("Couldn't transfer", err instanceof Error ? err.message : 'Unknown error')
+                  }
+                },
+              },
+            ],
+          )
+        },
+      },
+      { text: 'Remove from team', style: 'destructive', onPress: () => handleRemove(uid, memberName) },
+      { text: 'Cancel', style: 'cancel' },
     ])
   }
 
@@ -317,11 +354,10 @@ export default function SettingsScreen() {
                   trailing={
                     isAdmin && !isMe ? (
                       <Button
-                        title="Remove"
+                        title="Manage"
                         variant="plain"
                         size="sm"
-                        destructive
-                        onPress={() => handleRemove(m.id, m.name)}
+                        onPress={() => handleMemberMenu(m.id, m.name)}
                       />
                     ) : undefined
                   }
