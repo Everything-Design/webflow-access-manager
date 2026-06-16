@@ -22,23 +22,90 @@
 
         "addedAt": {
           ".write": "auth != null && auth.uid === $uid && !data.exists()"
-        }
+        },
+
+        "name":         { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
+        "email":        { ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 254)" },
+        "profileIcon":  { ".validate": "newData.val() === null || (newData.isString() && newData.val().length <= 32)" },
+        "profileColor": { ".validate": "newData.val() === null || (newData.isString() && newData.val().matches(/^[0-9A-Fa-f]{6}$/))" },
+        "id":           { ".validate": "newData.val() === $uid" },
+        "isOnline":     { ".validate": "newData.isBoolean()" },
+        "lastSeen":     { ".validate": "newData.isNumber() || newData.val() === null" },
+        "deviceId":     { ".validate": "newData.val() === null || newData.isString()" }
       }
     },
 
     "accounts": {
       ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
-      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
+
+      "$accountId": {
+        ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved' && (root.child('admin/uid').val() === auth.uid || (data.exists() && newData.exists()))",
+
+        "id":     { ".validate": "newData.val() === $accountId" },
+        "label":  {
+          ".write": "auth != null && root.child('admin/uid').val() === auth.uid",
+          ".validate": "newData.val() === null || (newData.isString() && newData.val().length > 0 && newData.val().length <= 80)"
+        },
+
+        "isOccupied": {
+          ".validate": "newData.isBoolean()"
+        },
+
+        "occupiedBy": {
+          ".validate": "newData.val() === null || newData.isString()",
+          ".write": "auth != null && (root.child('admin/uid').val() === auth.uid || newData.val() === null || newData.val() === auth.uid)"
+        },
+
+        "occupiedByName": {
+          ".validate": "newData.val() === null || newData.isString()"
+        },
+
+        "occupiedSince": {
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+
+        "hasPendingRequest": {
+          ".validate": "newData.isBoolean()"
+        }
+      }
     },
 
     "clientAccounts": {
       ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
-      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
+
+      "$clientId": {
+        ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved' && (root.child('admin/uid').val() === auth.uid || (!data.exists() && newData.exists() && newData.child('createdBy').val() === auth.uid) || (data.exists() && data.child('createdBy').val() === auth.uid))",
+
+        "createdBy":     { ".validate": "newData.isString()" },
+        "createdByName": { ".validate": "newData.isString()" },
+        "clientName":    { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+        "createdAt":     { ".validate": "newData.isNumber()" },
+        "isActive":      { ".validate": "newData.val() === null || newData.isBoolean()" },
+        "id":            { ".validate": "newData.val() === $clientId" }
+      }
     },
 
     "accessRequests": {
       ".read": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'",
-      ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved'"
+
+      "$requestId": {
+        ".write": "auth != null && root.child('team').child(auth.uid).child('status').val() === 'approved' && ((!data.exists() && newData.child('requesterId').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('ownerId').val() === auth.uid || data.child('requesterId').val() === auth.uid || root.child('admin/uid').val() === auth.uid)) || (data.exists() && !newData.exists() && (data.child('requesterId').val() === auth.uid || data.child('ownerId').val() === auth.uid || root.child('admin/uid').val() === auth.uid)))",
+
+        "requesterId": {
+          ".validate": "newData.isString() && newData.val() === auth.uid",
+          ".write": "auth != null && !data.exists()"
+        },
+        "ownerId":      { ".validate": "newData.isString()" },
+        "requesterName":{ ".validate": "newData.isString()" },
+        "ownerName":    { ".validate": "newData.isString()" },
+        "accountId":    { ".validate": "newData.isString()" },
+        "accountLabel": { ".validate": "newData.val() === null || newData.isString()" },
+        "status":       { ".validate": "newData.val() === 'pending' || newData.val() === 'released' || newData.val() === 'approved' || newData.val() === 'rejected' || newData.val() === 'cancelled'" },
+        "requestedAt":  { ".validate": "newData.isNumber()" },
+        "requesterNote":{ ".validate": "newData.val() === null || newData.isString()" },
+        "responseNote": { ".validate": "newData.val() === null || newData.isString()" },
+        "id":           { ".validate": "newData.val() === $requestId" }
+      }
     }
   }
 }
