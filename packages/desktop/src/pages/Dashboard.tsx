@@ -15,6 +15,7 @@ export function Dashboard() {
   const accounts = useAppStore((s) => s.accounts)
   const clientAccounts = useAppStore((s) => s.clientAccounts)
   const pendingRequestsForCurrentUser = useAppStore((s) => s.pendingRequestsForCurrentUser)
+  const allAccessRequests = useAppStore((s) => s.allAccessRequests)
   const isConnected = useAppStore((s) => s.isConnected)
   const currentUser = useAuthStore((s) => s.currentUser)
   const myClientAccount = useMemo(
@@ -31,6 +32,17 @@ export function Dashboard() {
 
   const adminUid = useAdminStore((s) => s.adminUid)
   const isAdmin = currentUser?.id === adminUid
+
+  // Recent activity = resolved requests involving the current user, capped at 10.
+  // Admin sees the same view as members — keeps the popup tight; the longer history
+  // can move to Settings later if we hear the team wants it.
+  const recentRequests = useMemo(() => {
+    if (!currentUser) return []
+    return allAccessRequests
+      .filter((r) => r.status !== 'pending')
+      .filter((r) => r.requesterId === currentUser.id || r.ownerId === currentUser.id)
+      .slice(0, 10)
+  }, [allAccessRequests, currentUser])
 
   const handleAddClient = async () => {
     if (!clientName.trim() || !currentUser) return
@@ -161,6 +173,49 @@ export function Dashboard() {
                 {accounts.map((account) => (
                   <AccountRow key={account.id} account={account} isAdmin={isAdmin} />
                 ))}
+              </div>
+            )}
+
+            {/* Recent activity — resolved requests involving me. Hidden when empty so
+                first-time users don't see a stub. */}
+            {recentRequests.length > 0 && (
+              <div className="mt-4">
+                <p className="text-caption2 uppercase tracking-wide text-text-secondary mb-1.5">
+                  Recent activity
+                </p>
+                <div className="space-y-1">
+                  {recentRequests.map((req) => {
+                    const incoming = req.ownerId === currentUser?.id
+                    const accountName = req.accountLabel ?? req.accountId
+                    const counterparty = incoming ? req.requesterName : req.ownerName
+                    const outcome =
+                      req.status === 'released' || req.status === 'approved' ? 'green'
+                      : req.status === 'rejected' ? 'red'
+                      : 'gray'
+                    const label =
+                      req.status === 'released' || req.status === 'approved'
+                        ? (incoming ? 'Handed over' : 'Received')
+                      : req.status === 'rejected'
+                        ? (incoming ? 'Declined' : 'Declined')
+                      : req.status === 'cancelled'
+                        ? (incoming ? 'They cancelled' : 'You cancelled')
+                      : req.status
+                    return (
+                      <div key={req.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-background-elevated">
+                        <StatusDot color={outcome as 'green' | 'red' | 'gray'} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-caption font-medium truncate">
+                            {accountName} <span className="text-text-secondary font-normal">· {counterparty}</span>
+                          </p>
+                          {req.responseNote && (
+                            <p className="text-caption2 text-text-tertiary truncate">"{req.responseNote}"</p>
+                          )}
+                        </div>
+                        <span className="text-caption2 text-text-secondary shrink-0">{label}</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </section>
