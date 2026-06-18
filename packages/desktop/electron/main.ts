@@ -9,6 +9,9 @@ import {
   screen,
   Menu,
   session,
+  net,
+  shell,
+  dialog,
 } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -325,6 +328,11 @@ function createTray() {
     },
     { type: 'separator' },
     {
+      label: 'Check for Updates…',
+      click: () => { void checkForUpdates({ silent: false }) },
+    },
+    { type: 'separator' },
+    {
       label: 'Quit Webflow Access Manager',
       accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
       click: () => {
@@ -399,6 +407,157 @@ nativeTheme.on('updated', () => {
   dashboardWindow?.webContents.send('theme-changed', isDark)
 })
 
+// ─── Auto-update (notify + 1-click download) ───
+// Unsigned macOS builds can't use Squirrel/electron-updater (that requires an Apple
+// Developer ID signature + notarization). Instead we poll the public GitHub Releases
+// API, notify the user when a newer version exists, and open the matching installer for
+// a one-click manual install. Swap this for electron-updater once the app is signed.
+const GITHUB_REPO = 'Everything-Design/webflow-access-manager'
+
+interface ReleaseAsset {
+  name: string
+  browser_download_url: string
+}
+interface GithubRelease {
+  tag_name: string
+  name: string
+  body: string
+  html_url: string
+  assets: ReleaseAsset[]
+}
+
+function fetchLatestRelease(): Promise<GithubRelease> {
+  return new Promise((resolve, reject) => {
+    const request = net.request({
+      method: 'GET',
+      url: `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+    })
+    request.setHeader('User-Agent', 'WebflowAccessManager-Updater')
+    request.setHeader('Accept', 'application/vnd.github+json')
+    let body = ''
+    request.on('response', (response) => {
+      if (response.statusCode !== 200) {
+        response.on('data', () => {})
+        response.on('end', () => reject(new Error(`GitHub API responded ${response.statusCode}`)))
+        return
+      }
+      response.on('data', (chunk) => {
+        body += chunk.toString()
+      })
+      response.on('end', () => {
+        try {
+          resolve(JSON.parse(body) as GithubRelease)
+        } catch (err) {
+          reject(err)
+        }
+      })
+    })
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+// Numeric, prerelease-agnostic semver compare (e.g. "v2.3.1" > "2.3.0").
+function isNewerVersion(latest: string, current: string): boolean {
+  const norm = (v: string) =>
+    v.replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0)
+  const a = norm(latest)
+  const b = norm(current)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0
+    const y = b[i] || 0
+    if (x > y) return true
+    if (x < y) return false
+  }
+  return false
+}
+
+// Pick the installer matching this machine: .dmg by chip on macOS, .exe on Windows.
+function pickInstallerAsset(assets: ReleaseAsset[]): ReleaseAsset | undefined {
+  if (process.platform === 'darwin') {
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+    return (
+      assets.find((a) => a.name.endsWith('.dmg') && a.name.includes(arch)) ||
+      assets.find((a) => a.name.endsWith('.dmg'))
+    )
+  }
+  if (process.platform === 'win32') {
+    return (
+      assets.find((a) => a.name.endsWith('.exe') && /setup/i.test(a.name)) ||
+      assets.find((a) => a.name.endsWith('.exe'))
+    )
+  }
+  return undefined
+}
+
+let isCheckingForUpdates = false
+async function checkForUpdates({ silent }: { silent: boolean }) {
+  if (isCheckingForUpdates) return
+  isCheckingForUpdates = true
+  try {
+    const release = await fetchLatestRelease()
+    const current = app.getVersion()
+    const latestTag = release.tag_name || ''
+
+    if (!isNewerVersion(latestTag, current)) {
+      if (!silent) {
+        await dialog.showMessageBox({
+          type: 'info',
+          title: 'No Updates',
+          message: "You're up to date.",
+          detail: `Webflow Access Manager ${current} is the latest version.`,
+          buttons: ['OK'],
+        })
+      }
+      return
+    }
+
+    const notes = (release.body || '').trim()
+    const detail = notes.length > 700 ? `${notes.slice(0, 700)}…` : notes
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Available',
+      message: `Version ${latestTag.replace(/^v/, '')} is available.`,
+      detail: detail || `You're on ${current}. A newer version is ready to download.`,
+      buttons: ['Download & Install', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    if (response !== 0) return
+
+    const asset = pickInstallerAsset(release.assets || [])
+    await shell.openExternal(asset ? asset.browser_download_url : release.html_url)
+
+    const installSteps =
+      process.platform === 'darwin'
+        ? 'When the download finishes:\n1. Open the .dmg\n2. Drag Webflow Access Manager into Applications (replace the old one)\n3. Relaunch the app\n\nQuit now so you can replace it?'
+        : 'When the download finishes, run the installer to update.\n\nQuit now so it can replace the running app?'
+    const { response: postDownload } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Downloading Update',
+      message: 'The new version is downloading in your browser.',
+      detail: installSteps,
+      buttons: ['Quit Now', 'Keep Running'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    if (postDownload === 0) app.quit()
+  } catch (err) {
+    console.error('[Updater] Update check failed:', err)
+    if (!silent) {
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'Update Check Failed',
+        message: 'Could not check for updates.',
+        detail: err instanceof Error ? err.message : String(err),
+        buttons: ['OK'],
+      })
+    }
+  } finally {
+    isCheckingForUpdates = false
+  }
+}
+
 // ─── App Lifecycle ───
 
 function setupAppMenu() {
@@ -409,6 +568,8 @@ function setupAppMenu() {
           label: app.name,
           submenu: [
             { role: 'about' as const },
+            { type: 'separator' as const },
+            { label: 'Check for Updates…', click: () => { void checkForUpdates({ silent: false }) } },
             { type: 'separator' as const },
             { role: 'hide' as const },
             { role: 'hideOthers' as const },
@@ -484,6 +645,14 @@ app.on('ready', async () => {
   setupAppMenu()
   createTray()
   createPopupWindow()
+
+  // Auto-check for updates shortly after launch — packaged builds only (the dev version
+  // string isn't a real release). Silent: stays quiet unless an update is actually found.
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void checkForUpdates({ silent: true })
+    }, 5000)
+  }
 })
 
 // Track quit intent so close handlers know to actually close
