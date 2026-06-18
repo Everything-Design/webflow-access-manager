@@ -59,6 +59,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [userName, setUserName] = useState('')
   const [selectedIcon, setSelectedIcon] = useState('user')
   const [selectedColor, setSelectedColor] = useState('0066CC')
+  const [appVersion, setAppVersion] = useState('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   useEffect(() => {
     if (currentUser) {
@@ -67,6 +69,21 @@ export function Settings({ onBack }: SettingsProps) {
       setSelectedColor(currentUser.profileColor ?? '0066CC')
     }
   }, [currentUser])
+
+  useEffect(() => {
+    window.electronAPI?.getAppVersion().then(setAppVersion).catch(() => {})
+  }, [])
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true)
+    try {
+      await window.electronAPI?.checkForUpdates()
+    } catch (err) {
+      console.error('[Settings] Update check failed:', err)
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
 
   const handleSave = async () => {
     await updateUser({
@@ -255,6 +272,22 @@ export function Settings({ onBack }: SettingsProps) {
             <div className="flex items-center gap-2">
               <StatusDot color={isConnected ? 'green' : 'red'} size="md" />
               <span className="text-subheadline">{isConnected ? 'Connected to Firebase' : 'Disconnected'}</span>
+            </div>
+          </section>
+
+          <hr className="border-divider" />
+
+          {/* About / Updates */}
+          <section>
+            <h2 className="text-headline mb-3">About</h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-subheadline">Webflow Access Manager</p>
+                <p className="text-caption text-text-secondary">Version {appVersion || '—'}</p>
+              </div>
+              <Button variant="secondary" size="sm" disabled={checkingUpdate} onClick={handleCheckUpdates}>
+                {checkingUpdate ? 'Checking…' : 'Check for Updates'}
+              </Button>
             </div>
           </section>
 

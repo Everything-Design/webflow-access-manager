@@ -382,6 +382,14 @@ ipcMain.on('send-notification', (_event, payload: { title: string; body: string;
 
 ipcMain.handle('get-platform', () => process.platform)
 
+ipcMain.handle('get-app-version', () => app.getVersion())
+
+// Renderer-triggered update check (Settings → Check for Updates). Same flow as the
+// menu/tray items; never silent — the user asked, so always show a result.
+ipcMain.handle('check-for-updates', async () => {
+  await checkForUpdates({ silent: false })
+})
+
 ipcMain.handle('get-dark-mode', () => nativeTheme.shouldUseDarkColors)
 
 ipcMain.handle('get-device-id', () => {

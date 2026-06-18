@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => ipcRenderer.invoke('get-platform') as Promise<string>,
   getDarkMode: () => ipcRenderer.invoke('get-dark-mode') as Promise<boolean>,
   getDeviceId: () => ipcRenderer.invoke('get-device-id') as Promise<string>,
+  getAppVersion: () => ipcRenderer.invoke('get-app-version') as Promise<string>,
+
+  // Updates
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<void>,
 
   // Theme change listener
   onThemeChanged: (callback: (isDark: boolean) => void) => {

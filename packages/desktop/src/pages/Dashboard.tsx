@@ -9,7 +9,17 @@ import { Modal } from '../components/ui/Modal'
 import { StatusDot } from '../components/ui/StatusDot'
 import { Settings } from './Settings'
 
-type Tab = 'internal' | 'client'
+type Tab = 'internal' | 'client' | 'activity'
+
+// Compact, locale-aware timestamp for the activity log (e.g. "Jun 18, 3:42 PM").
+function formatActivityTime(secs: number): string {
+  return new Date(secs * 1000).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
 
 export function Dashboard() {
   const accounts = useAppStore((s) => s.accounts)
@@ -33,15 +43,15 @@ export function Dashboard() {
   const adminUid = useAdminStore((s) => s.adminUid)
   const isAdmin = currentUser?.id === adminUid
 
-  // Recent activity = resolved requests, capped at 10. Members see only their own
-  // history (keeps the popup tight). Admin sees the full team timeline so they have
-  // a single place to spot patterns.
-  const recentRequests = useMemo(() => {
+  // Activity log = all resolved requests (uncapped), newest first. Members see only
+  // their own history; admin sees the full team timeline. .filter() returns fresh
+  // arrays, so sorting here never mutates the store's array.
+  const activityLog = useMemo(() => {
     if (!currentUser) return []
     return allAccessRequests
       .filter((r) => r.status !== 'pending')
       .filter((r) => isAdmin || r.requesterId === currentUser.id || r.ownerId === currentUser.id)
-      .slice(0, 10)
+      .sort((a, b) => b.requestedAt - a.requestedAt)
   }, [allAccessRequests, currentUser, isAdmin])
 
   const handleAddClient = async () => {
@@ -132,6 +142,16 @@ export function Dashboard() {
           >
             Client ({clientAccounts.length})
           </button>
+          <button
+            onClick={() => setActiveTab('activity')}
+            className={`flex-1 pb-2 text-subheadline font-medium text-center border-b-2 transition-colors ${
+              activeTab === 'activity'
+                ? 'border-accent-blue text-accent-blue'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Activity
+          </button>
         </div>
       </div>
 
@@ -175,49 +195,6 @@ export function Dashboard() {
                 ))}
               </div>
             )}
-
-            {/* Recent activity — resolved requests involving me. Hidden when empty so
-                first-time users don't see a stub. */}
-            {recentRequests.length > 0 && (
-              <div className="mt-4">
-                <p className="text-caption2 uppercase tracking-wide text-text-secondary mb-1.5">
-                  Recent activity
-                </p>
-                <div className="space-y-1">
-                  {recentRequests.map((req) => {
-                    const incoming = req.ownerId === currentUser?.id
-                    const accountName = req.accountLabel ?? req.accountId
-                    const counterparty = incoming ? req.requesterName : req.ownerName
-                    const outcome =
-                      req.status === 'released' || req.status === 'approved' ? 'green'
-                      : req.status === 'rejected' ? 'red'
-                      : 'gray'
-                    const label =
-                      req.status === 'released' || req.status === 'approved'
-                        ? (incoming ? 'Handed over' : 'Received')
-                      : req.status === 'rejected'
-                        ? (incoming ? 'Declined' : 'Declined')
-                      : req.status === 'cancelled'
-                        ? (incoming ? 'They cancelled' : 'You cancelled')
-                      : req.status
-                    return (
-                      <div key={req.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-background-elevated">
-                        <StatusDot color={outcome as 'green' | 'red' | 'gray'} size="sm" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-caption font-medium truncate">
-                            {accountName} <span className="text-text-secondary font-normal">· {counterparty}</span>
-                          </p>
-                          {req.responseNote && (
-                            <p className="text-caption2 text-text-tertiary truncate">"{req.responseNote}"</p>
-                          )}
-                        </div>
-                        <span className="text-caption2 text-text-secondary shrink-0">{label}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </section>
         )}
 
@@ -243,6 +220,55 @@ export function Dashboard() {
                 {clientAccounts.map((ca) => (
                   <ClientAccountRow key={ca.id} clientAccount={ca} />
                 ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'activity' && (
+          <section>
+            {activityLog.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-6 text-text-secondary">
+                <span className="text-3xl">🕓</span>
+                <p className="text-subheadline font-medium text-text-primary">No activity yet</p>
+                <p className="text-caption text-center max-w-[260px]">
+                  {isAdmin
+                    ? 'Account hand-offs and access requests across the team will appear here.'
+                    : 'Your account hand-offs and access requests will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {activityLog.map((req) => {
+                  const accountName = req.accountLabel ?? req.accountId
+                  const outcome =
+                    req.status === 'released' || req.status === 'approved' ? 'green'
+                    : req.status === 'rejected' ? 'red'
+                    : 'gray'
+                  const label =
+                    req.status === 'released' || req.status === 'approved' ? 'Handed over'
+                    : req.status === 'rejected' ? 'Declined'
+                    : req.status === 'cancelled' ? 'Cancelled'
+                    : req.status
+                  return (
+                    <div key={req.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-background-elevated">
+                      <StatusDot color={outcome as 'green' | 'red' | 'gray'} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-caption font-medium truncate">
+                          {accountName}{' '}
+                          <span className="text-text-secondary font-normal">
+                            · {req.requesterName} → {req.ownerName}
+                          </span>
+                        </p>
+                        <p className="text-caption2 text-text-tertiary">{formatActivityTime(req.requestedAt)}</p>
+                        {req.responseNote && (
+                          <p className="text-caption2 text-text-tertiary truncate">"{req.responseNote}"</p>
+                        )}
+                      </div>
+                      <span className="text-caption2 text-text-secondary shrink-0">{label}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </section>

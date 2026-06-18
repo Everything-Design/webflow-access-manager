@@ -7,6 +7,8 @@ export interface ElectronAPI {
   getPlatform: () => Promise<string>
   getDarkMode: () => Promise<boolean>
   getDeviceId: () => Promise<string>
+  getAppVersion: () => Promise<string>
+  checkForUpdates: () => Promise<void>
   onThemeChanged: (callback: (isDark: boolean) => void) => () => void
 }
 
