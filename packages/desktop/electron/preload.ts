@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<void>,
 
+  // Launch at login
+  getLaunchAtLogin: () => ipcRenderer.invoke('get-launch-at-login') as Promise<boolean>,
+  setLaunchAtLogin: (enabled: boolean) =>
+    ipcRenderer.invoke('set-launch-at-login', enabled) as Promise<boolean>,
+
   // Theme change listener
   onThemeChanged: (callback: (isDark: boolean) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, isDark: boolean) => callback(isDark)

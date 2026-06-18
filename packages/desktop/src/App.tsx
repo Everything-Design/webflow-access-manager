@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth'
 import { configurePlatform, initFirebase, useAuthStore, useAppStore, useAdminStore } from '@wam/shared'
 import { electronAdapters } from './adapters/electronAdapters'
 import { TrayPopup } from './pages/TrayPopup'
@@ -17,6 +18,10 @@ initFirebase({
   messagingSenderId: '1069127337276',
   appId: '1:1069127337276:ios:9f42018b28cfdc60678a39',
   databaseURL: 'https://webflow-team-login-default-rtdb.asia-southeast1.firebasedatabase.app',
+}, {
+  // Persist the auth session durably (IndexedDB, falling back to localStorage) instead of
+  // relying on the SDK default — so the session survives relaunches and reinstalls.
+  authPersistence: [indexedDBLocalPersistence, browserLocalPersistence],
 })
 
 function Spinner() {

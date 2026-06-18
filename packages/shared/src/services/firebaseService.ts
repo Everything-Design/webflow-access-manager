@@ -166,6 +166,15 @@ export async function registerTeamMember(user: Omit<User, 'status'>): Promise<vo
   await onDisconnect(ref(getDb(), `team/${user.id}/isOnline`)).set(false)
 }
 
+// Re-assert presence after a (re)connect. The onDisconnect handler set during sign-in
+// fires server-side when the socket drops, leaving isOnline=false; on every reconnect we
+// must re-arm onDisconnect and set isOnline=true again, or the member appears permanently
+// offline to the team after any network blip until they restart the app.
+export async function reassertPresence(uid: string): Promise<void> {
+  await onDisconnect(ref(getDb(), `team/${uid}/isOnline`)).set(false)
+  await update(ref(getDb(), `team/${uid}`), { isOnline: true })
+}
+
 export async function updateMemberStatus(uid: string, status: TeamMemberStatus): Promise<void> {
   await update(ref(getDb(), `team/${uid}`), { status })
 }

@@ -58,7 +58,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     console.log('[AppStore] Setting up listeners for user:', userId)
 
     unsubscribers.push(
-      firebaseService.observeConnection((connected) => set({ isConnected: connected }))
+      firebaseService.observeConnection((connected) => {
+        set({ isConnected: connected })
+        // On every (re)connect, re-arm presence so a member doesn't get stuck "offline"
+        // to the team after a network drop (onDisconnect already flipped them to false).
+        if (connected) {
+          firebaseService.reassertPresence(userId).catch((err) =>
+            console.error('[AppStore] Failed to re-assert presence on reconnect:', err)
+          )
+        }
+      })
     )
 
     unsubscribers.push(

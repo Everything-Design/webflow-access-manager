@@ -61,6 +61,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [selectedColor, setSelectedColor] = useState('0066CC')
   const [appVersion, setAppVersion] = useState('')
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [launchAtLogin, setLaunchAtLogin] = useState(false)
 
   useEffect(() => {
     if (currentUser) {
@@ -72,6 +73,7 @@ export function Settings({ onBack }: SettingsProps) {
 
   useEffect(() => {
     window.electronAPI?.getAppVersion().then(setAppVersion).catch(() => {})
+    window.electronAPI?.getLaunchAtLogin().then(setLaunchAtLogin).catch(() => {})
   }, [])
 
   const handleCheckUpdates = async () => {
@@ -82,6 +84,18 @@ export function Settings({ onBack }: SettingsProps) {
       console.error('[Settings] Update check failed:', err)
     } finally {
       setCheckingUpdate(false)
+    }
+  }
+
+  const handleToggleLaunch = async () => {
+    const next = !launchAtLogin
+    setLaunchAtLogin(next) // optimistic
+    try {
+      const actual = await window.electronAPI?.setLaunchAtLogin(next)
+      if (typeof actual === 'boolean') setLaunchAtLogin(actual)
+    } catch (err) {
+      console.error('[Settings] Failed to set launch-at-login:', err)
+      setLaunchAtLogin(!next) // revert
     }
   }
 
@@ -273,6 +287,33 @@ export function Settings({ onBack }: SettingsProps) {
               <StatusDot color={isConnected ? 'green' : 'red'} size="md" />
               <span className="text-subheadline">{isConnected ? 'Connected to Firebase' : 'Disconnected'}</span>
             </div>
+          </section>
+
+          <hr className="border-divider" />
+
+          {/* Startup */}
+          <section>
+            <h2 className="text-headline mb-3">Startup</h2>
+            <button
+              onClick={handleToggleLaunch}
+              className="w-full flex items-center justify-between gap-3 bg-background-elevated rounded-md p-3 text-left"
+            >
+              <div className="min-w-0">
+                <p className="text-subheadline">Launch at login</p>
+                <p className="text-caption text-text-secondary">Open automatically (to the tray) when you sign in to your Mac.</p>
+              </div>
+              <span
+                className={`shrink-0 w-10 h-6 rounded-full p-0.5 flex transition-colors ${
+                  launchAtLogin ? 'bg-accent-blue' : 'bg-border'
+                }`}
+              >
+                <span
+                  className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                    launchAtLogin ? 'translate-x-4' : ''
+                  }`}
+                />
+              </span>
+            </button>
           </section>
 
           <hr className="border-divider" />

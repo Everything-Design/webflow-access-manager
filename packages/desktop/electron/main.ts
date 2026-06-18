@@ -35,6 +35,12 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173
 // In production, serve the bundled dist over a localhost HTTP server. Firebase Auth refuses
 // to do its postMessage handshake with file:// origins (auth/unauthorized-domain). localhost
 // is allowed by Firebase by default, so this is the cleanest fix.
+//
+// IMPORTANT: bind a FIXED port. Firebase persists the auth session in IndexedDB keyed by
+// origin (scheme+host+port). A random port each launch (the old `listen(0)`) changed the
+// origin every time, so the SDK could never find the previous session → re-login on every
+// launch/reinstall. A stable port keeps the origin — and therefore the session — durable.
+const PROD_SERVER_PORT = 41730
 let prodServerPort: number | null = null
 
 function mimeType(ext: string): string {
@@ -84,9 +90,23 @@ function startProdServer(): Promise<number> {
         res.end('error')
       }
     })
-    server.on('error', reject)
-    // Bind to 127.0.0.1 only — never exposed beyond this machine
-    server.listen(0, '127.0.0.1', () => {
+    // If the fixed port is somehow taken, fall back to a random one so the app still
+    // launches — the session won't carry over that one time, but it won't be broken.
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`[Main] Port ${PROD_SERVER_PORT} in use — falling back to a random port (session may not persist this launch).`)
+        server.listen(0, '127.0.0.1', () => {
+          const addr = server.address()
+          if (addr && typeof addr === 'object') resolve(addr.port)
+          else reject(new Error('Failed to obtain server port'))
+        })
+        return
+      }
+      reject(err)
+    })
+    // Bind to a fixed port on 127.0.0.1 only — never exposed beyond this machine. The
+    // fixed port keeps the origin stable so Firebase's persisted session survives.
+    server.listen(PROD_SERVER_PORT, '127.0.0.1', () => {
       const addr = server.address()
       if (addr && typeof addr === 'object') {
         console.log(`[Main] Prod server listening on http://localhost:${addr.port}`)
@@ -151,6 +171,41 @@ function getStatusIconPath(status: TrayStatus) {
   return null
 }
 
+// ─── Dashboard window state ───
+// Remembers the dashboard window's position + size between launches. Stored in userData
+// (resets on a full uninstall, which is fine for a non-critical preference).
+interface WindowBounds {
+  x?: number
+  y?: number
+  width: number
+  height: number
+}
+
+function windowStatePath() {
+  return path.join(app.getPath('userData'), 'window-state.json')
+}
+
+function loadDashboardBounds(): WindowBounds | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(windowStatePath(), 'utf8'))
+    if (parsed && typeof parsed.width === 'number' && typeof parsed.height === 'number') {
+      return parsed as WindowBounds
+    }
+  } catch {
+    // No saved state yet — first launch.
+  }
+  return null
+}
+
+function saveDashboardBounds() {
+  if (!dashboardWindow || dashboardWindow.isDestroyed()) return
+  try {
+    fs.writeFileSync(windowStatePath(), JSON.stringify(dashboardWindow.getBounds()), 'utf8')
+  } catch (err) {
+    console.error('[Main] Failed to save window state:', err)
+  }
+}
+
 function createPopupWindow() {
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
@@ -202,9 +257,12 @@ function createDashboardWindow() {
     return
   }
 
+  const saved = loadDashboardBounds()
+
   dashboardWindow = new BrowserWindow({
-    width: DASHBOARD_WIDTH,
-    height: DASHBOARD_HEIGHT,
+    width: saved?.width ?? DASHBOARD_WIDTH,
+    height: saved?.height ?? DASHBOARD_HEIGHT,
+    ...(saved?.x !== undefined && saved?.y !== undefined ? { x: saved.x, y: saved.y } : {}),
     minWidth: 400,
     minHeight: 500,
     show: false,
@@ -219,6 +277,10 @@ function createDashboardWindow() {
     },
   })
 
+  // Persist position/size as the user moves or resizes the window.
+  dashboardWindow.on('moved', saveDashboardBounds)
+  dashboardWindow.on('resized', saveDashboardBounds)
+
   dashboardWindow.loadURL(getAppUrl('/dashboard'))
 
   dashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -232,6 +294,7 @@ function createDashboardWindow() {
   })
 
   dashboardWindow.on('close', (e) => {
+    saveDashboardBounds()
     // If user is actually quitting (Cmd+Q, tray Quit), let the window close
     if (isQuitting) return
     // Otherwise just hide — app stays in tray
@@ -388,6 +451,14 @@ ipcMain.handle('get-app-version', () => app.getVersion())
 // menu/tray items; never silent — the user asked, so always show a result.
 ipcMain.handle('check-for-updates', async () => {
   await checkForUpdates({ silent: false })
+})
+
+// Launch-at-login — backed by the OS login-items list (persists across reinstalls on its
+// own). openAsHidden launches straight to the tray without a window flashing up.
+ipcMain.handle('get-launch-at-login', () => app.getLoginItemSettings().openAtLogin)
+ipcMain.handle('set-launch-at-login', (_event, enabled: boolean) => {
+  app.setLoginItemSettings({ openAtLogin: !!enabled, openAsHidden: true })
+  return app.getLoginItemSettings().openAtLogin
 })
 
 ipcMain.handle('get-dark-mode', () => nativeTheme.shouldUseDarkColors)

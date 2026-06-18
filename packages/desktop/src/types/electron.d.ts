@@ -9,6 +9,8 @@ export interface ElectronAPI {
   getDeviceId: () => Promise<string>
   getAppVersion: () => Promise<string>
   checkForUpdates: () => Promise<void>
+  getLaunchAtLogin: () => Promise<boolean>
+  setLaunchAtLogin: (enabled: boolean) => Promise<boolean>
   onThemeChanged: (callback: (isDark: boolean) => void) => () => void
 }
 
