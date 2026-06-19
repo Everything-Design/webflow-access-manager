@@ -17,6 +17,7 @@ import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
 import http from 'http'
+import { spawn } from 'child_process'
 import { URL } from 'url'
 
 let tray: Tray | null = null
@@ -569,6 +570,84 @@ function pickInstallerAsset(assets: ReleaseAsset[]): ReleaseAsset | undefined {
   return undefined
 }
 
+// Stream a URL to a file, reporting integer percent. Electron's net follows the GitHub
+// release redirect to the CDN automatically.
+function downloadFile(url: string, dest: string, onProgress?: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = net.request(url)
+    request.setHeader('User-Agent', 'WebflowAccessManager-Updater')
+    request.on('response', (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Download failed: HTTP ${response.statusCode}`))
+        return
+      }
+      const total = parseInt(String(response.headers['content-length'] || '0'), 10)
+      let received = 0
+      let lastPct = -1
+      const file = fs.createWriteStream(dest)
+      response.on('data', (chunk: Buffer) => {
+        received += chunk.length
+        file.write(chunk)
+        if (onProgress && total) {
+          const pct = Math.floor((received / total) * 100)
+          if (pct !== lastPct) {
+            lastPct = pct
+            onProgress(pct)
+          }
+        }
+      })
+      response.on('end', () => file.end(() => resolve()))
+      response.on('error', reject)
+    })
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+// Self-replacing updater for unsigned macOS builds. Squirrel/electron-updater won't apply
+// updates to an unsigned app, so a detached helper script waits for this process to exit,
+// mounts the .dmg, ditto-copies the new .app over the installed one, strips the quarantine
+// flag (so Gatekeeper lets it launch), and reopens it.
+function installUpdateAndRestart(dmgPath: string) {
+  try {
+    const exe = process.execPath // …/Webflow Access Manager.app/Contents/MacOS/…
+    const idx = exe.indexOf('.app/')
+    if (idx === -1) throw new Error('Could not locate the .app bundle to update')
+    const appBundle = exe.slice(0, idx + 4) // include ".app"
+    const script = `#!/bin/bash
+set -e
+DMG="$1"; APP_DEST="$2"; APP_PID="$3"
+while kill -0 "$APP_PID" 2>/dev/null; do sleep 0.5; done
+MOUNT=$(mktemp -d)
+hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT"
+SRC=$(ls -d "$MOUNT"/*.app | head -n1)
+rm -rf "$APP_DEST"
+ditto "$SRC" "$APP_DEST"
+xattr -dr com.apple.quarantine "$APP_DEST" || true
+hdiutil detach "$MOUNT" || true
+rm -f "$DMG"
+open "$APP_DEST"
+`
+    const scriptPath = path.join(app.getPath('temp'), 'wam-update.sh')
+    fs.writeFileSync(scriptPath, script, { mode: 0o755 })
+    const child = spawn('/bin/bash', [scriptPath, dmgPath, appBundle, String(process.pid)], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+    app.quit() // before-quit sets isQuitting so windows actually close
+  } catch (err) {
+    console.error('[Updater] Install failed:', err)
+    void dialog.showMessageBox({
+      type: 'error',
+      title: 'Update Failed',
+      message: 'Could not install the update automatically.',
+      detail: err instanceof Error ? err.message : String(err),
+      buttons: ['OK'],
+    })
+  }
+}
+
 let isCheckingForUpdates = false
 async function checkForUpdates({ silent }: { silent: boolean }) {
   if (isCheckingForUpdates) return
@@ -605,22 +684,56 @@ async function checkForUpdates({ silent }: { silent: boolean }) {
     if (response !== 0) return
 
     const asset = pickInstallerAsset(release.assets || [])
-    await shell.openExternal(asset ? asset.browser_download_url : release.html_url)
+    if (!asset) {
+      // No matching installer — fall back to the release page.
+      await shell.openExternal(release.html_url)
+      return
+    }
 
-    const installSteps =
-      process.platform === 'darwin'
-        ? 'When the download finishes:\n1. Open the .dmg\n2. Drag Webflow Access Manager into Applications (replace the old one)\n3. Relaunch the app\n\nQuit now so you can replace it?'
-        : 'When the download finishes, run the installer to update.\n\nQuit now so it can replace the running app?'
-    const { response: postDownload } = await dialog.showMessageBox({
-      type: 'info',
-      title: 'Downloading Update',
-      message: 'The new version is downloading in your browser.',
-      detail: installSteps,
-      buttons: ['Quit Now', 'Keep Running'],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    if (postDownload === 0) app.quit()
+    // Non-macOS: keep the simple open-in-browser path (the self-updater is mac-only).
+    if (process.platform !== 'darwin') {
+      await shell.openExternal(asset.browser_download_url)
+      return
+    }
+
+    // macOS: download in the background, then offer a one-click Restart & Update.
+    try {
+      const dmgPath = path.join(app.getPath('temp'), asset.name)
+      new Notification({
+        title: 'Downloading update…',
+        body: `Getting version ${latestTag.replace(/^v/, '')}. You'll be prompted to restart when it's ready.`,
+        silent: true,
+      }).show()
+
+      await downloadFile(asset.browser_download_url, dmgPath, (pct) => {
+        tray?.setToolTip(`Downloading update… ${pct}%`)
+      })
+      tray?.setToolTip('Webflow Access Manager')
+
+      const { response: postDownload } = await dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Ready',
+        message: `Version ${latestTag.replace(/^v/, '')} is ready to install.`,
+        detail: 'The app will restart to finish updating. This only takes a moment.',
+        buttons: ['Restart & Update', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      if (postDownload === 0) installUpdateAndRestart(dmgPath)
+    } catch (err) {
+      console.error('[Updater] Download/install failed:', err)
+      tray?.setToolTip('Webflow Access Manager')
+      const { response: fallback } = await dialog.showMessageBox({
+        type: 'error',
+        title: 'Update Failed',
+        message: "Couldn't download the update automatically.",
+        detail: 'Open the download in your browser instead?',
+        buttons: ['Open in Browser', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      if (fallback === 0) await shell.openExternal(asset.browser_download_url)
+    }
   } catch (err) {
     console.error('[Updater] Update check failed:', err)
     if (!silent) {
