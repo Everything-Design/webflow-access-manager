@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth'
+import { indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth'
 import { configurePlatform, initFirebase, useAuthStore, useAppStore, useAdminStore } from '@wam/shared'
 import { electronAdapters } from './adapters/electronAdapters'
 import { TrayPopup } from './pages/TrayPopup'
@@ -22,6 +22,9 @@ initFirebase({
   // Persist the auth session durably (IndexedDB, falling back to localStorage) instead of
   // relying on the SDK default — so the session survives relaunches and reinstalls.
   authPersistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  // initializeAuth() (used when authPersistence is set) doesn't auto-wire the popup
+  // resolver, so Google signInWithPopup needs this or it throws auth/argument-error.
+  popupRedirectResolver: browserPopupRedirectResolver,
 })
 
 function Spinner() {

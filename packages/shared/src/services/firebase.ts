@@ -19,6 +19,10 @@ export interface InitOptions {
   // every cold start creates a new anonymous user with a different UID, which
   // breaks the approval flow.
   authPersistence?: unknown
+  // Required for signInWithPopup/Redirect when authPersistence is set: initializeAuth()
+  // does NOT auto-wire the popup resolver that getAuth() provides, so popup sign-in throws
+  // auth/argument-error without it. Desktop passes browserPopupRedirectResolver here.
+  popupRedirectResolver?: unknown
 }
 
 let app: FirebaseApp | null = null
@@ -33,7 +37,12 @@ export function initFirebase(config: FirebaseConfig, options: InitOptions = {}) 
     // Use initializeAuth with the supplied persistence — this MUST run before any
     // getAuth(app) call elsewhere, which is why the auth instance is cached at this
     // module level rather than re-resolved per caller.
-    auth = initializeAuth(app, { persistence: options.authPersistence as never })
+    auth = initializeAuth(app, {
+      persistence: options.authPersistence as never,
+      ...(options.popupRedirectResolver
+        ? { popupRedirectResolver: options.popupRedirectResolver as never }
+        : {}),
+    })
   } else {
     auth = getAuth(app)
   }
