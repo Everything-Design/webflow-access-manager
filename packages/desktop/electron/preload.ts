@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setLaunchAtLogin: (enabled: boolean) =>
     ipcRenderer.invoke('set-launch-at-login', enabled) as Promise<boolean>,
 
+  // Popup pin (keep open on blur)
+  getPopupPinned: () => ipcRenderer.invoke('get-popup-pinned') as Promise<boolean>,
+  togglePopupPinned: () => ipcRenderer.invoke('toggle-popup-pinned') as Promise<boolean>,
+
   // Theme change listener
   onThemeChanged: (callback: (isDark: boolean) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, isDark: boolean) => callback(isDark)

@@ -23,10 +23,12 @@ import { URL } from 'url'
 let tray: Tray | null = null
 let popupWindow: BrowserWindow | null = null
 let dashboardWindow: BrowserWindow | null = null
+// When pinned, the popup stays open instead of hiding on blur (the "pin" button).
+let popupPinned = false
 
 const isDev = !app.isPackaged
-const POPUP_WIDTH = 320
-const POPUP_MAX_HEIGHT = 480
+const POPUP_WIDTH = 360
+const POPUP_MAX_HEIGHT = 560
 const DASHBOARD_WIDTH = 500
 const DASHBOARD_HEIGHT = 650
 
@@ -245,6 +247,8 @@ function createPopupWindow() {
   popupWindow.webContents.setWindowOpenHandler(handleAuthPopup)
 
   popupWindow.on('blur', () => {
+    // Pinned → stay open when focus leaves
+    if (popupPinned) return
     // Don't hide if DevTools is focused (dev mode)
     if (isDev && popupWindow?.webContents.isDevToolsFocused()) return
     popupWindow?.hide()
@@ -452,6 +456,13 @@ ipcMain.handle('get-app-version', () => app.getVersion())
 // menu/tray items; never silent — the user asked, so always show a result.
 ipcMain.handle('check-for-updates', async () => {
   await checkForUpdates({ silent: false })
+})
+
+// Popup pin — keep the popup open instead of auto-hiding on blur.
+ipcMain.handle('get-popup-pinned', () => popupPinned)
+ipcMain.handle('toggle-popup-pinned', () => {
+  popupPinned = !popupPinned
+  return popupPinned
 })
 
 // Launch-at-login — backed by the OS login-items list (persists across reinstalls on its

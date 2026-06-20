@@ -11,6 +11,8 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<void>
   getLaunchAtLogin: () => Promise<boolean>
   setLaunchAtLogin: (enabled: boolean) => Promise<boolean>
+  getPopupPinned: () => Promise<boolean>
+  togglePopupPinned: () => Promise<boolean>
   onThemeChanged: (callback: (isDark: boolean) => void) => () => void
 }
 
