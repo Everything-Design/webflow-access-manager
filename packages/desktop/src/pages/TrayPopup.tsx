@@ -56,16 +56,13 @@ export function TrayPopup() {
 
   const [tab, setTab] = useState<Tab>('today')
   const [presence, setPresence] = useState<Presence>('available')
-  const [statusMsg, setStatusMsg] = useState('')
-  const [editingMsg, setEditingMsg] = useState(false)
   const [pinned, setPinned] = useState(false)
   const [, setTick] = useState(0)
 
-  // Load persisted presence + status message, then mirror presence into the tray colour.
+  // Load persisted presence, then mirror it into the tray colour.
   useEffect(() => {
     const savedPresence = (localStorage.getItem('wam:presence') as Presence) || 'available'
     setPresence(savedPresence)
-    setStatusMsg(localStorage.getItem('wam:statusMsg') || '')
     window.electronAPI?.setTrayStatus(PRESENCE[savedPresence].tray)
     window.electronAPI?.getPopupPinned().then(setPinned).catch(() => {})
   }, [])
@@ -79,11 +76,6 @@ export function TrayPopup() {
     setPresence(p)
     localStorage.setItem('wam:presence', p)
     window.electronAPI?.setTrayStatus(PRESENCE[p].tray)
-  }
-
-  const saveStatusMsg = (msg: string) => {
-    setStatusMsg(msg)
-    localStorage.setItem('wam:statusMsg', msg)
   }
 
   const togglePin = async () => {
@@ -129,30 +121,6 @@ export function TrayPopup() {
               </span>
             </div>
           </div>
-        </div>
-
-        {/* Status message */}
-        <div className="titlebar-no-drag mt-2 flex items-center gap-1.5">
-          <span className="text-text-tertiary text-xs">💬</span>
-          {editingMsg ? (
-            <input
-              autoFocus
-              value={statusMsg}
-              onChange={(e) => setStatusMsg(e.target.value)}
-              onBlur={() => { saveStatusMsg(statusMsg.trim()); setEditingMsg(false) }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { saveStatusMsg(statusMsg.trim()); setEditingMsg(false) } }}
-              placeholder="Set a status…"
-              maxLength={80}
-              className="flex-1 bg-transparent text-caption text-text-secondary outline-none border-b border-divider"
-            />
-          ) : (
-            <button
-              onClick={() => setEditingMsg(true)}
-              className="flex-1 text-left text-caption text-text-secondary hover:text-text-primary truncate"
-            >
-              {statusMsg || 'Set a status…'}
-            </button>
-          )}
         </div>
 
         {/* Presence pills */}
@@ -293,9 +261,15 @@ export function TrayPopup() {
       {/* Bottom toolbar */}
       <div className="titlebar-no-drag flex items-center justify-between px-3 h-11 border-t border-divider">
         <div className="flex items-center gap-1">
-          <ToolbarIcon label="Notifications" badge={pendingRequestsForCurrentUser.length} onClick={() => window.electronAPI?.openDashboard()}>🔔</ToolbarIcon>
-          <ToolbarIcon label="Settings" onClick={() => window.electronAPI?.openDashboard()}>⚙️</ToolbarIcon>
-          <ToolbarIcon label={pinned ? 'Unpin' : 'Keep open'} active={pinned} onClick={togglePin}>📌</ToolbarIcon>
+          <ToolbarIcon label="Requests waiting for you" badge={pendingRequestsForCurrentUser.length} onClick={() => window.electronAPI?.openDashboard()}>
+            <BellIcon />
+          </ToolbarIcon>
+          <ToolbarIcon label="Settings" onClick={() => window.electronAPI?.openDashboard()}>
+            <GearIcon />
+          </ToolbarIcon>
+          <ToolbarIcon label={pinned ? 'Unpin (allow auto-hide)' : 'Keep popup open'} active={pinned} onClick={togglePin}>
+            <PinIcon />
+          </ToolbarIcon>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -402,7 +376,7 @@ function AccountRow({
           iAlreadyHaveOne ? (
             <span className="text-caption2 text-text-tertiary px-1">—</span>
           ) : (
-            <RowButton onClick={onClaim} variant="primary">▷ Start</RowButton>
+            <RowButton onClick={onClaim} variant="primary">Start</RowButton>
           )
         ) : hasMyRequest ? (
           <RowButton onClick={onCancelRequest} variant="ghost">Cancel</RowButton>
@@ -495,8 +469,10 @@ function ToolbarIcon({ children, onClick, label, badge, active }: { children: Re
     <button
       onClick={onClick}
       title={label}
-      className={`relative w-8 h-8 flex items-center justify-center rounded-md text-base transition-colors ${
-        active ? 'bg-accent-blue/15' : 'hover:bg-background-elevated'
+      className={`relative w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+        active
+          ? 'bg-accent-blue/15 text-accent-blue'
+          : 'text-text-secondary hover:text-text-primary hover:bg-background-elevated'
       }`}
     >
       {children}
@@ -506,5 +482,35 @@ function ToolbarIcon({ children, onClick, label, badge, active }: { children: Re
         </span>
       )}
     </button>
+  )
+}
+
+// Stroke icons (match the app's existing SVG style), chosen for each control's function.
+const svgProps = {
+  width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+}
+function BellIcon() {
+  return (
+    <svg {...svgProps}>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+function GearIcon() {
+  return (
+    <svg {...svgProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z" />
+    </svg>
+  )
+}
+function PinIcon() {
+  return (
+    <svg {...svgProps}>
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M9 9V4h6v5l2 3v2H7v-2l2-3z" />
+    </svg>
   )
 }
