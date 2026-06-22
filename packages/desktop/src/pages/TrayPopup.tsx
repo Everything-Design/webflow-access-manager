@@ -14,14 +14,7 @@ const ICON_EMOJI: Record<string, string> = {
   sun: '☀️', cloud: '☁️', leaf: '🍃', sparkles: '✨', crown: '👑', rocket: '🚀',
 }
 
-type Presence = 'available' | 'occupied' | 'focus'
-const PRESENCE: Record<Presence, { label: string; dot: 'green' | 'orange' | 'red'; tray: 'green' | 'orange' | 'red' }> = {
-  available: { label: 'Available', dot: 'green', tray: 'green' },
-  occupied: { label: 'Occupied', dot: 'orange', tray: 'orange' },
-  focus: { label: 'Focus', dot: 'red', tray: 'red' },
-}
-
-type Tab = 'today' | 'team'
+type Tab = 'internal' | 'client' | 'log'
 
 function timeAgo(secs: number): string {
   const diff = Math.floor(Date.now() / 1000) - secs
@@ -37,7 +30,6 @@ export function TrayPopup() {
   const accessRequests = useAppStore((s) => s.accessRequests)
   const allAccessRequests = useAppStore((s) => s.allAccessRequests)
   const pendingRequestsForCurrentUser = useAppStore((s) => s.pendingRequestsForCurrentUser)
-  const team = useAppStore((s) => s.team)
   const isConnected = useAppStore((s) => s.isConnected)
   const currentUser = useAuthStore((s) => s.currentUser)
 
@@ -54,52 +46,27 @@ export function TrayPopup() {
     [accounts, currentUser?.id]
   )
 
-  const [tab, setTab] = useState<Tab>('today')
-  const [presence, setPresence] = useState<Presence>('available')
-  const [pinned, setPinned] = useState(false)
+  const [tab, setTab] = useState<Tab>('internal')
   const [, setTick] = useState(0)
 
-  // Load persisted presence, then mirror it into the tray colour.
-  useEffect(() => {
-    const savedPresence = (localStorage.getItem('wam:presence') as Presence) || 'available'
-    setPresence(savedPresence)
-    window.electronAPI?.setTrayStatus(PRESENCE[savedPresence].tray)
-    window.electronAPI?.getPopupPinned().then(setPinned).catch(() => {})
-  }, [])
-
+  // Refresh duration/relative-time labels every 60s.
   useEffect(() => {
     const timer = setInterval(() => setTick((t) => t + 1), 60000)
     return () => clearInterval(timer)
   }, [])
 
-  const choosePresence = (p: Presence) => {
-    setPresence(p)
-    localStorage.setItem('wam:presence', p)
-    window.electronAPI?.setTrayStatus(PRESENCE[p].tray)
-  }
+  // Log = every resolved request in the app, newest first.
+  const logItems = useMemo(
+    () =>
+      allAccessRequests
+        .filter((r) => r.status !== 'pending')
+        .sort((a, b) => b.requestedAt - a.requestedAt),
+    [allAccessRequests]
+  )
 
-  const togglePin = async () => {
-    try {
-      const next = await window.electronAPI?.togglePopupPinned()
-      if (typeof next === 'boolean') setPinned(next)
-    } catch { /* ignore */ }
-  }
-
-  // Activity log = resolved requests involving me, newest first.
-  const logItems = useMemo(() => {
-    if (!currentUser) return []
-    return allAccessRequests
-      .filter((r) => r.status !== 'pending')
-      .filter((r) => r.requesterId === currentUser.id || r.ownerId === currentUser.id)
-      .slice(0, 8)
-  }, [allAccessRequests, currentUser])
-
-  const approvedTeam = useMemo(() => team.filter((m) => m.status === 'approved'), [team])
-  const todayCount = accounts.length + clientAccounts.length
-  const pres = PRESENCE[presence]
-  const ringColor = isConnected ? pres.dot : 'red'
   const emoji = ICON_EMOJI[currentUser?.profileIcon ?? 'user'] ?? '👤'
   const avatarColor = currentUser?.profileColor ?? '0066CC'
+  const ringColor = isConnected ? 'green' : 'red'
 
   return (
     <div className="flex flex-col h-full bg-background-primary">
@@ -107,7 +74,7 @@ export function TrayPopup() {
       <div className="px-3 pt-3 titlebar-drag">
         <div className="flex items-center gap-3 titlebar-no-drag">
           <div
-            className="relative shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-2xl"
+            className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-2xl"
             style={{ backgroundColor: `#${avatarColor}20`, boxShadow: `0 0 0 2px ${dotHex(ringColor)}` }}
           >
             {emoji}
@@ -115,176 +82,116 @@ export function TrayPopup() {
           <div className="min-w-0">
             <p className="text-headline truncate leading-tight">{currentUser?.name ?? 'Signed in'}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <StatusDot color={isConnected ? pres.dot : 'red'} size="sm" />
+              <StatusDot color={isConnected ? 'green' : 'red'} size="sm" />
               <span className="text-caption2 text-text-secondary">
-                {isConnected ? pres.label : 'Offline'}
+                {isConnected ? 'Available' : 'Offline'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Presence pills */}
-        <div className="titlebar-no-drag mt-2.5 flex gap-1.5">
-          {(Object.keys(PRESENCE) as Presence[]).map((p) => {
-            const active = presence === p
-            return (
-              <button
-                key={p}
-                onClick={() => choosePresence(p)}
-                className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-caption font-medium border transition-colors ${
-                  active
-                    ? 'border-current bg-background-elevated'
-                    : 'border-border text-text-secondary hover:text-text-primary'
-                }`}
-                style={active ? { color: dotHex(PRESENCE[p].dot) } : undefined}
-              >
-                <StatusDot color={PRESENCE[p].dot} size="sm" />
-                {PRESENCE[p].label}
-              </button>
-            )
-          })}
-        </div>
-
         {/* Tabs */}
-        <div className="titlebar-no-drag mt-2.5 flex gap-1 p-1 rounded-lg bg-background-elevated">
-          <TabButton active={tab === 'today'} onClick={() => setTab('today')} label={`Today · ${todayCount}`} />
-          <TabButton active={tab === 'team'} onClick={() => setTab('team')} label={`Team · ${approvedTeam.length}`} />
+        <div className="titlebar-no-drag mt-3 flex gap-1 p-1 rounded-lg bg-background-elevated">
+          <TabButton active={tab === 'internal'} onClick={() => setTab('internal')} label="Internal" />
+          <TabButton active={tab === 'client'} onClick={() => setTab('client')} label="Client" />
+          <TabButton active={tab === 'log'} onClick={() => setTab('log')} label="Log" />
         </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3 mt-1">
-        {tab === 'today' ? (
-          <>
-            {pendingRequestsForCurrentUser.length > 0 && (
-              <Section title="Waiting for you" count={pendingRequestsForCurrentUser.length} accent>
-                <div className="space-y-1.5">
-                  {pendingRequestsForCurrentUser.map((r) => (
-                    <PendingRow
-                      key={r.id}
-                      request={r}
-                      onAccept={() => releaseAccountForRequest(r)}
-                      onDecline={() => rejectRequest(r.id)}
-                    />
-                  ))}
-                </div>
-              </Section>
-            )}
+        {/* Incoming requests stay visible on every tab */}
+        {pendingRequestsForCurrentUser.length > 0 && (
+          <div>
+            <p className="text-caption2 uppercase tracking-wide text-accent-orange mb-1.5 px-0.5">
+              Waiting for you
+            </p>
+            <div className="space-y-1.5">
+              {pendingRequestsForCurrentUser.map((r) => (
+                <PendingRow
+                  key={r.id}
+                  request={r}
+                  onAccept={() => releaseAccountForRequest(r)}
+                  onDecline={() => rejectRequest(r.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-            <Section title="Internal" count={accounts.length}>
-              {accounts.length === 0 ? (
-                <Empty>No account slots yet.</Empty>
-              ) : (
-                <div className="space-y-1">
-                  {accounts.map((a) => (
-                    <AccountRow
-                      key={a.id}
-                      account={a}
-                      isMine={a.occupiedBy === currentUser?.id}
-                      hasMyRequest={accessRequests.some(
-                        (r) => r.accountId === a.id && r.requesterId === currentUser?.id && r.status === 'pending'
-                      )}
-                      iAlreadyHaveOne={!!myAccount}
-                      onClaim={() => currentUser && claimAccount(a, currentUser)}
-                      onRelease={() => releaseAccount(a.id)}
-                      onRequest={() => currentUser && requestAccess(a, currentUser)}
-                      onCancelRequest={() => {
-                        const req = accessRequests.find(
-                          (r) => r.accountId === a.id && r.requesterId === currentUser?.id && r.status === 'pending'
-                        )
-                        if (req) cancelRequest(req.id)
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </Section>
+        {tab === 'internal' && (
+          accounts.length === 0 ? (
+            <Empty>No account slots yet. Add some from the dashboard.</Empty>
+          ) : (
+            <div className="space-y-1">
+              {accounts.map((a) => (
+                <AccountRow
+                  key={a.id}
+                  account={a}
+                  isMine={a.occupiedBy === currentUser?.id}
+                  hasMyRequest={accessRequests.some(
+                    (r) => r.accountId === a.id && r.requesterId === currentUser?.id && r.status === 'pending'
+                  )}
+                  iAlreadyHaveOne={!!myAccount}
+                  onClaim={() => currentUser && claimAccount(a, currentUser)}
+                  onRelease={() => releaseAccount(a.id)}
+                  onRequest={() => currentUser && requestAccess(a, currentUser)}
+                  onCancelRequest={() => {
+                    const req = accessRequests.find(
+                      (r) => r.accountId === a.id && r.requesterId === currentUser?.id && r.status === 'pending'
+                    )
+                    if (req) cancelRequest(req.id)
+                  }}
+                />
+              ))}
+            </div>
+          )
+        )}
 
-            <Section title="Client" count={clientAccounts.length}>
-              {clientAccounts.length === 0 ? (
-                <Empty>No client accounts in use.</Empty>
-              ) : (
-                <div className="space-y-1">
-                  {clientAccounts.map((c) => (
-                    <ClientRow
-                      key={c.id}
-                      clientAccount={c}
-                      isMine={c.createdBy === currentUser?.id}
-                      onRelease={() => clearClientAccount(c.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </Section>
+        {tab === 'client' && (
+          clientAccounts.length === 0 ? (
+            <Empty>No client accounts in use.</Empty>
+          ) : (
+            <div className="space-y-1">
+              {clientAccounts.map((c) => (
+                <ClientRow
+                  key={c.id}
+                  clientAccount={c}
+                  isMine={c.createdBy === currentUser?.id}
+                  onRelease={() => clearClientAccount(c.id)}
+                />
+              ))}
+            </div>
+          )
+        )}
 
-            <Section title="Log" count={logItems.length}>
-              {logItems.length === 0 ? (
-                <Empty>No activity yet.</Empty>
-              ) : (
-                <div className="space-y-1">
-                  {logItems.map((r) => (
-                    <LogRow key={r.id} request={r} />
-                  ))}
-                </div>
-              )}
-            </Section>
-          </>
-        ) : (
-          <Section title="Team" count={approvedTeam.length}>
-            {approvedTeam.length === 0 ? (
-              <Empty>No teammates yet.</Empty>
-            ) : (
-              <div className="space-y-1">
-                {approvedTeam.map((m) => {
-                  const holding = accounts.find((a) => a.occupiedBy === m.id)
-                  return (
-                    <div key={m.id} className="flex items-center gap-2 px-2 h-[44px] rounded bg-background-elevated">
-                      <StatusDot color={m.isOnline ? 'green' : 'gray'} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-caption font-medium truncate leading-tight">
-                          {m.name}
-                          {m.id === currentUser?.id && <span className="text-text-secondary font-normal"> (you)</span>}
-                        </p>
-                        <p className="text-caption2 text-text-tertiary truncate leading-tight">
-                          {holding ? `On ${getAccountDisplayName(holding.id, holding.label)}` : m.isOnline ? 'Online' : 'Offline'}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Section>
+        {tab === 'log' && (
+          logItems.length === 0 ? (
+            <Empty>No activity yet.</Empty>
+          ) : (
+            <div className="space-y-1">
+              {logItems.map((r) => (
+                <LogRow key={r.id} request={r} />
+              ))}
+            </div>
+          )
         )}
       </div>
 
-      {/* Bottom toolbar */}
-      <div className="titlebar-no-drag flex items-center justify-between px-3 h-11 border-t border-divider">
-        <div className="flex items-center gap-1">
-          <ToolbarIcon label="Requests waiting for you" badge={pendingRequestsForCurrentUser.length} onClick={() => window.electronAPI?.openDashboard()}>
-            <BellIcon />
-          </ToolbarIcon>
-          <ToolbarIcon label="Settings" onClick={() => window.electronAPI?.openDashboard()}>
-            <GearIcon />
-          </ToolbarIcon>
-          <ToolbarIcon label={pinned ? 'Unpin (allow auto-hide)' : 'Keep popup open'} active={pinned} onClick={togglePin}>
-            <PinIcon />
-          </ToolbarIcon>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => window.electronAPI?.openDashboard()}
-            className="text-caption font-medium text-accent-blue hover:opacity-80"
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => window.electronAPI?.quitApp()}
-            className="text-caption font-medium text-text-secondary hover:text-text-primary"
-          >
-            Quit
-          </button>
-        </div>
+      {/* Footer — Dashboard + Quit */}
+      <div className="titlebar-no-drag flex items-center gap-2 px-3 py-2.5 border-t border-divider">
+        <button
+          onClick={() => window.electronAPI?.openDashboard()}
+          className="flex-1 h-9 rounded-lg bg-accent-blue text-white text-subheadline font-medium hover:bg-accent-blue/90 transition-colors"
+        >
+          Dashboard
+        </button>
+        <button
+          onClick={() => window.electronAPI?.quitApp()}
+          className="flex-1 h-9 rounded-lg bg-background-elevated text-text-primary text-subheadline font-medium border border-border hover:bg-background-tertiary transition-colors"
+        >
+          Quit
+        </button>
       </div>
     </div>
   )
@@ -312,20 +219,6 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
     >
       {label}
     </button>
-  )
-}
-
-function Section({ title, count, accent, children }: { title: string; count: number; accent?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5 px-0.5">
-        <p className={`text-caption2 uppercase tracking-wide ${accent ? 'text-accent-orange' : 'text-text-secondary'}`}>
-          {title}
-        </p>
-        <span className="text-caption2 text-text-tertiary">{count}</span>
-      </div>
-      {children}
-    </div>
   )
 }
 
@@ -461,56 +354,5 @@ function RowButton({ children, onClick, variant = 'secondary' }: { children: Rea
     <button onClick={onClick} className={`text-caption2 font-medium px-2.5 h-[26px] rounded-md transition-colors whitespace-nowrap ${styles}`}>
       {children}
     </button>
-  )
-}
-
-function ToolbarIcon({ children, onClick, label, badge, active }: { children: React.ReactNode; onClick: () => void; label: string; badge?: number; active?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      className={`relative w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
-        active
-          ? 'bg-accent-blue/15 text-accent-blue'
-          : 'text-text-secondary hover:text-text-primary hover:bg-background-elevated'
-      }`}
-    >
-      {children}
-      {badge !== undefined && badge > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-accent-blue text-white text-[10px] font-semibold">
-          {badge}
-        </span>
-      )}
-    </button>
-  )
-}
-
-// Stroke icons (match the app's existing SVG style), chosen for each control's function.
-const svgProps = {
-  width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none',
-  stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
-}
-function BellIcon() {
-  return (
-    <svg {...svgProps}>
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  )
-}
-function GearIcon() {
-  return (
-    <svg {...svgProps}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z" />
-    </svg>
-  )
-}
-function PinIcon() {
-  return (
-    <svg {...svgProps}>
-      <line x1="12" y1="17" x2="12" y2="22" />
-      <path d="M9 9V4h6v5l2 3v2H7v-2l2-3z" />
-    </svg>
   )
 }
