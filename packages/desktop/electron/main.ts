@@ -12,6 +12,7 @@ import {
   net,
   shell,
   dialog,
+  globalShortcut,
 } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -223,8 +224,13 @@ function createPopupWindow() {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    // No transparency — use solid background to avoid blank window
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f6f6f6',
+    // Frosted-glass popover (native macOS vibrancy). The window is transparent; the
+    // renderer paints a translucent panel so it stays readable even if vibrancy doesn't
+    // composite. visualEffectState keeps the blur active while unfocused.
+    transparent: true,
+    vibrancy: 'popover',
+    visualEffectState: 'active',
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -254,6 +260,11 @@ function createPopupWindow() {
   })
 
   popupWindow.webContents.setWindowOpenHandler(handleAuthPopup)
+
+  // Esc closes the popup (standard macOS popover behavior).
+  popupWindow.webContents.on('before-input-event', (_e, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape') popupWindow?.hide()
+  })
 
   popupWindow.on('blur', () => {
     // Pinned → stay open when focus leaves
@@ -355,6 +366,14 @@ function showPopupWindow() {
   popupWindow!.focus()
 }
 
+function togglePopup() {
+  if (popupWindow?.isVisible()) {
+    popupWindow.hide()
+  } else {
+    showPopupWindow()
+  }
+}
+
 function loadTrayIcon(): Electron.NativeImage | null {
   const iconPath = isDev
     ? path.join(process.cwd(), 'resources', 'tray-brand.png')
@@ -390,13 +409,7 @@ function createTray() {
   console.log('[Main] Tray created with status:', currentTrayStatus)
 
   // Left-click: toggle popup
-  tray.on('click', () => {
-    if (popupWindow?.isVisible()) {
-      popupWindow.hide()
-    } else {
-      showPopupWindow()
-    }
-  })
+  tray.on('click', () => togglePopup())
 
   // Right-click context menu (works on both macOS and Windows)
   const contextMenu = Menu.buildFromTemplate([
@@ -866,6 +879,13 @@ app.on('ready', async () => {
   createTray()
   createPopupWindow()
 
+  // Menu-bar utility: hide the Dock icon (accessory app). Also helps the popup show on
+  // the active Space without activating a Space switch.
+  if (process.platform === 'darwin') app.dock?.hide()
+
+  // Global hotkey to toggle the popup from anywhere.
+  globalShortcut.register('CommandOrControl+Shift+W', () => togglePopup())
+
   // Auto-check for updates shortly after launch — packaged builds only (the dev version
   // string isn't a real release). Silent: stays quiet unless an update is actually found.
   if (app.isPackaged) {
@@ -878,6 +898,7 @@ app.on('ready', async () => {
 // Track quit intent so close handlers know to actually close
 let isQuitting = false
 app.on('before-quit', () => { isQuitting = true })
+app.on('will-quit', () => globalShortcut.unregisterAll())
 
 app.on('window-all-closed', (e: Event) => {
   // Prevent app from quitting — it lives in the tray
