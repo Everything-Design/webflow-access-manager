@@ -234,6 +234,14 @@ function createPopupWindow() {
     },
   })
 
+  // Show the popup on the CURRENT Space — including over another app's full-screen Space —
+  // instead of pulling the user back to the desktop Space the window normally belongs to.
+  // canJoinAllSpaces + fullScreenAuxiliary; screen-saver level floats it above full-screen.
+  popupWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  if (process.platform === 'darwin') {
+    popupWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
+
   popupWindow.loadURL(getAppUrl('/popup'))
 
   // Log any load errors
