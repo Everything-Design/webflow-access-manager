@@ -349,10 +349,10 @@ function showPopupWindow() {
 
 function loadTrayIcon(): Electron.NativeImage | null {
   const iconPath = isDev
-    ? path.join(process.cwd(), 'resources', 'tray-iconTemplate.png')
-    : path.join(process.resourcesPath, 'tray-iconTemplate.png')
+    ? path.join(process.cwd(), 'resources', 'tray-brand.png')
+    : path.join(process.resourcesPath, 'tray-brand.png')
   if (!fs.existsSync(iconPath)) {
-    console.error('[Main] Tray template icon not found at:', iconPath)
+    console.error('[Main] Tray brand icon not found at:', iconPath)
     return null
   }
   const icon = nativeImage.createFromPath(iconPath)
@@ -360,8 +360,8 @@ function loadTrayIcon(): Electron.NativeImage | null {
     console.error('[Main] Tray icon loaded empty:', iconPath)
     return null
   }
-  // Monochrome template — macOS recolours it to match the menu bar (light/dark).
-  icon.setTemplateImage(true)
+  // Colored brand icon — NOT a template, so macOS keeps #17573e in light AND dark mode.
+  icon.setTemplateImage(false)
   return icon
 }
 
