@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { StatusDot } from '../components/ui/StatusDot'
 import {
   useAppStore,
@@ -47,13 +47,36 @@ export function TrayPopup() {
   )
 
   const [tab, setTab] = useState<Tab>('internal')
+  const [pinned, setPinned] = useState(false)
   const [, setTick] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
 
-  // Refresh duration/relative-time labels every 60s.
+  useEffect(() => {
+    window.electronAPI?.getPopupPinned().then(setPinned).catch(() => {})
+  }, [])
+
   useEffect(() => {
     const timer = setInterval(() => setTick((t) => t + 1), 60000)
     return () => clearInterval(timer)
   }, [])
+
+  // Auto-size the window to the popup's actual content height (capped in main).
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const report = () => window.electronAPI?.resizePopup?.(Math.ceil(el.offsetHeight))
+    report()
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const togglePin = async () => {
+    try {
+      const next = await window.electronAPI?.togglePopupPinned()
+      if (typeof next === 'boolean') setPinned(next)
+    } catch { /* ignore */ }
+  }
 
   // Log = every resolved request in the app, newest first.
   const logItems = useMemo(
@@ -69,7 +92,7 @@ export function TrayPopup() {
   const ringColor = isConnected ? 'green' : 'red'
 
   return (
-    <div className="flex flex-col h-full bg-background-primary">
+    <div ref={rootRef} className="flex flex-col bg-background-primary">
       {/* Header */}
       <div className="px-3 pt-3 titlebar-drag">
         <div className="flex items-center gap-3 titlebar-no-drag">
@@ -98,9 +121,8 @@ export function TrayPopup() {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3 mt-1">
-        {/* Incoming requests stay visible on every tab */}
+      {/* Body — caps growth and scrolls only when there are many rows */}
+      <div className="overflow-y-auto max-h-[410px] px-3 py-2.5 space-y-3 mt-1">
         {pendingRequestsForCurrentUser.length > 0 && (
           <div>
             <p className="text-caption2 uppercase tracking-wide text-accent-orange mb-1.5 px-0.5">
@@ -178,20 +200,34 @@ export function TrayPopup() {
         )}
       </div>
 
-      {/* Footer — Dashboard + Quit */}
-      <div className="titlebar-no-drag flex items-center gap-2 px-3 py-2.5 border-t border-divider">
-        <button
-          onClick={() => window.electronAPI?.openDashboard()}
-          className="flex-1 h-9 rounded-lg bg-accent-blue text-white text-subheadline font-medium hover:bg-accent-blue/90 transition-colors"
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => window.electronAPI?.quitApp()}
-          className="flex-1 h-9 rounded-lg bg-background-elevated text-text-primary text-subheadline font-medium border border-border hover:bg-background-tertiary transition-colors"
-        >
-          Quit
-        </button>
+      {/* Footer — compact actions + Dashboard / Quit */}
+      <div className="titlebar-no-drag flex items-center justify-between px-3 h-11 border-t border-divider">
+        <div className="flex items-center gap-1">
+          <ToolbarIcon label="Requests waiting for you" badge={pendingRequestsForCurrentUser.length} onClick={() => window.electronAPI?.openDashboard()}>
+            <BellIcon />
+          </ToolbarIcon>
+          <ToolbarIcon label="Settings" onClick={() => window.electronAPI?.openDashboard()}>
+            <GearIcon />
+          </ToolbarIcon>
+          <ToolbarIcon label={pinned ? 'Unpin (allow auto-hide)' : 'Keep popup open'} active={pinned} onClick={togglePin}>
+            <PinIcon />
+          </ToolbarIcon>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.electronAPI?.openDashboard()}
+            className="flex items-center gap-1 text-caption font-medium text-accent-blue hover:opacity-80"
+          >
+            <GridIcon />
+            Dashboard
+          </button>
+          <button
+            onClick={() => window.electronAPI?.quitApp()}
+            className="text-caption font-medium text-text-secondary hover:text-text-primary"
+          >
+            Quit
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -354,5 +390,64 @@ function RowButton({ children, onClick, variant = 'secondary' }: { children: Rea
     <button onClick={onClick} className={`text-caption2 font-medium px-2.5 h-[26px] rounded-md transition-colors whitespace-nowrap ${styles}`}>
       {children}
     </button>
+  )
+}
+
+function ToolbarIcon({ children, onClick, label, badge, active }: { children: React.ReactNode; onClick: () => void; label: string; badge?: number; active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`relative w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+        active ? 'bg-accent-blue/15 text-accent-blue' : 'text-text-secondary hover:text-text-primary hover:bg-background-elevated'
+      }`}
+    >
+      {children}
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-accent-blue text-white text-[10px] font-semibold">
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+}
+
+// Stroke icons matching the app's SVG style.
+const svgProps = {
+  width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+}
+function BellIcon() {
+  return (
+    <svg {...svgProps}>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+function GearIcon() {
+  return (
+    <svg {...svgProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z" />
+    </svg>
+  )
+}
+function PinIcon() {
+  return (
+    <svg {...svgProps}>
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M9 9V4h6v5l2 3v2H7v-2l2-3z" />
+    </svg>
+  )
+}
+function GridIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
   )
 }

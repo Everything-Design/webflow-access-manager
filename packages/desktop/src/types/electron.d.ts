@@ -13,6 +13,7 @@ export interface ElectronAPI {
   setLaunchAtLogin: (enabled: boolean) => Promise<boolean>
   getPopupPinned: () => Promise<boolean>
   togglePopupPinned: () => Promise<boolean>
+  resizePopup: (height: number) => void
   onThemeChanged: (callback: (isDark: boolean) => void) => () => void
 }
 

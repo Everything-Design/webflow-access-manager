@@ -28,6 +28,7 @@ let popupPinned = false
 
 const isDev = !app.isPackaged
 const POPUP_WIDTH = 360
+const POPUP_MIN_HEIGHT = 160
 const POPUP_MAX_HEIGHT = 560
 const DASHBOARD_WIDTH = 500
 const DASHBOARD_HEIGHT = 650
@@ -212,7 +213,7 @@ function saveDashboardBounds() {
 function createPopupWindow() {
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
-    height: POPUP_MAX_HEIGHT,
+    height: 420, // initial; the renderer resizes to its content height on load
     show: false,
     frame: false,
     resizable: false,
@@ -346,30 +347,31 @@ function showPopupWindow() {
   popupWindow!.focus()
 }
 
-function loadTrayIcon(status: TrayStatus): Electron.NativeImage | null {
-  const iconPath = getStatusIconPath(status)
-  if (!iconPath) return null
+function loadTrayIcon(): Electron.NativeImage | null {
+  const iconPath = isDev
+    ? path.join(process.cwd(), 'resources', 'tray-iconTemplate.png')
+    : path.join(process.resourcesPath, 'tray-iconTemplate.png')
+  if (!fs.existsSync(iconPath)) {
+    console.error('[Main] Tray template icon not found at:', iconPath)
+    return null
+  }
   const icon = nativeImage.createFromPath(iconPath)
   if (icon.isEmpty()) {
     console.error('[Main] Tray icon loaded empty:', iconPath)
     return null
   }
-  // Colored icons must NOT be set as template images, otherwise macOS strips the colour
-  // and renders them black-on-transparent.
+  // Monochrome template — macOS recolours it to match the menu bar (light/dark).
+  icon.setTemplateImage(true)
   return icon
 }
 
 function setTrayStatus(status: TrayStatus) {
-  if (!tray) return
-  if (status === currentTrayStatus) return
-  const icon = loadTrayIcon(status)
-  if (!icon) return
-  tray.setImage(icon)
+  // Tray icon is a monochrome brand mark now — status no longer changes the image.
   currentTrayStatus = status
 }
 
 function createTray() {
-  const icon = loadTrayIcon(currentTrayStatus)
+  const icon = loadTrayIcon()
   if (!icon) {
     console.error('[Main] No tray icon found — tray will not be created.')
     return
@@ -463,6 +465,13 @@ ipcMain.handle('get-popup-pinned', () => popupPinned)
 ipcMain.handle('toggle-popup-pinned', () => {
   popupPinned = !popupPinned
   return popupPinned
+})
+
+// Renderer reports its content height; size the popup to fit (clamped).
+ipcMain.on('resize-popup', (_event, height: number) => {
+  if (!popupWindow || popupWindow.isDestroyed()) return
+  const h = Math.max(POPUP_MIN_HEIGHT, Math.min(Math.round(height), POPUP_MAX_HEIGHT))
+  popupWindow.setContentSize(POPUP_WIDTH, h)
 })
 
 // Launch-at-login — backed by the OS login-items list (persists across reinstalls on its
