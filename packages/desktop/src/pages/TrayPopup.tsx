@@ -75,24 +75,12 @@ export function TrayPopup() {
     [allAccessRequests]
   )
 
-  // The popup window is transparent (for vibrancy) — clear the document background so the
-  // frosted glass shows through; the panel below paints a readable translucent fill.
-  useEffect(() => {
-    document.documentElement.style.background = 'transparent'
-    document.body.style.background = 'transparent'
-  }, [])
-
   const emoji = ICON_EMOJI[currentUser?.profileIcon ?? 'user'] ?? '👤'
   const avatarColor = currentUser?.profileColor ?? '0066CC'
   const ringColor = isConnected ? 'green' : 'red'
-  const isDark = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
 
   return (
-    <div
-      ref={rootRef}
-      className="flex flex-col rounded-xl overflow-hidden"
-      style={{ backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(246,246,246,0.78)' }}
-    >
+    <div ref={rootRef} className="flex flex-col bg-background-primary">
       {/* Header */}
       <div className="px-3 pt-3 titlebar-drag">
         <div className="flex items-center gap-3 titlebar-no-drag">

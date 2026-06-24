@@ -224,19 +224,18 @@ function createPopupWindow() {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    // Frosted-glass popover (native macOS vibrancy). The window is transparent; the
-    // renderer paints a translucent panel so it stays readable even if vibrancy doesn't
-    // composite. visualEffectState keeps the blur active while unfocused.
-    transparent: true,
-    vibrancy: 'popover',
-    visualEffectState: 'active',
-    backgroundColor: '#00000000',
+    // Solid background (known-good). Transparent + vibrancy was reverted in 2.4.2 — in
+    // packaged builds it contributed to the popup failing to render reliably.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f6f6f6',
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       devTools: isDev,
+      // The popup starts hidden; without this, macOS throttles the background renderer
+      // and Firebase auth init can stall on the loading spinner until first shown.
+      backgroundThrottling: false,
     },
   })
 
@@ -299,6 +298,7 @@ function createDashboardWindow() {
       nodeIntegration: false,
       sandbox: true,
       devTools: isDev,
+      backgroundThrottling: false,
     },
   })
 
@@ -902,9 +902,9 @@ app.on('ready', async () => {
   createTray()
   createPopupWindow()
 
-  // Menu-bar utility: hide the Dock icon (accessory app). Also helps the popup show on
-  // the active Space without activating a Space switch.
-  if (process.platform === 'darwin') app.dock?.hide()
+  // NOTE: app.dock.hide() (accessory mode) was reverted in 2.4.2 — as a background
+  // accessory app, macOS App Nap could stall the renderer so the app hung on the
+  // loading spinner. Keep the normal Dock icon.
 
   // Global hotkey to toggle the popup from anywhere.
   globalShortcut.register('CommandOrControl+Shift+W', () => togglePopup())
