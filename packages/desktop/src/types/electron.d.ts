@@ -1,5 +1,6 @@
 export interface ElectronAPI {
   openDashboard: () => void
+  openSettings: () => void
   quitApp: () => void
   hidePopup: () => void
   sendNotification: (payload: { title: string; body: string; requestId?: string }) => void
@@ -14,6 +15,7 @@ export interface ElectronAPI {
   getPopupPinned: () => Promise<boolean>
   togglePopupPinned: () => Promise<boolean>
   resizePopup: (height: number) => void
+  onShowSettings: (callback: () => void) => () => void
   onThemeChanged: (callback: (isDark: boolean) => void) => () => void
 }
 

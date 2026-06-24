@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   openDashboard: () => ipcRenderer.send('open-dashboard'),
+  openSettings: () => ipcRenderer.send('open-settings'),
   quitApp: () => ipcRenderer.send('quit-app'),
   hidePopup: () => ipcRenderer.send('hide-popup'),
 
@@ -34,6 +35,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Popup auto-resize to content
   resizePopup: (height: number) => ipcRenderer.send('resize-popup', height),
+
+  // Dashboard asks to jump to Settings (from the popup gear)
+  onShowSettings: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('show-settings', handler)
+    return () => ipcRenderer.removeListener('show-settings', handler)
+  },
 
   // Theme change listener
   onThemeChanged: (callback: (isDark: boolean) => void) => {

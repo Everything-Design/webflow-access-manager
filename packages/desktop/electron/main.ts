@@ -443,6 +443,20 @@ ipcMain.on('open-dashboard', () => {
   popupWindow?.hide()
 })
 
+// Open the dashboard and jump straight to the Settings view.
+ipcMain.on('open-settings', () => {
+  const existed = !!dashboardWindow && !dashboardWindow.isDestroyed()
+  createDashboardWindow()
+  popupWindow?.hide()
+  if (existed) {
+    dashboardWindow?.webContents.send('show-settings')
+  } else {
+    dashboardWindow?.webContents.once('did-finish-load', () => {
+      dashboardWindow?.webContents.send('show-settings')
+    })
+  }
+})
+
 ipcMain.on('quit-app', () => {
   app.quit()
 })
@@ -690,6 +704,7 @@ open "$APP_DEST"
 }
 
 let isCheckingForUpdates = false
+let dismissedUpdateVersion: string | null = null
 async function checkForUpdates({ silent }: { silent: boolean }) {
   if (isCheckingForUpdates) return
   isCheckingForUpdates = true
@@ -711,18 +726,25 @@ async function checkForUpdates({ silent }: { silent: boolean }) {
       return
     }
 
-    const notes = (release.body || '').trim()
-    const detail = notes.length > 700 ? `${notes.slice(0, 700)}…` : notes
-    const { response } = await dialog.showMessageBox({
-      type: 'info',
-      title: 'Update Available',
-      message: `Version ${latestTag.replace(/^v/, '')} is available.`,
-      detail: detail || `You're on ${current}. A newer version is ready to download.`,
-      buttons: ['Download & Install', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    if (response !== 0) return
+    // Manual check shows release notes + a confirm first. The automatic check skips
+    // straight to downloading and offering Restart — but won't re-nag a version the user
+    // already dismissed this session.
+    if (silent) {
+      if (dismissedUpdateVersion === latestTag) return
+    } else {
+      const notes = (release.body || '').trim()
+      const detail = notes.length > 700 ? `${notes.slice(0, 700)}…` : notes
+      const { response } = await dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Available',
+        message: `Version ${latestTag.replace(/^v/, '')} is available.`,
+        detail: detail || `You're on ${current}. A newer version is ready to download.`,
+        buttons: ['Download & Install', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      if (response !== 0) return
+    }
 
     const asset = pickInstallerAsset(release.assets || [])
     if (!asset) {
@@ -761,6 +783,7 @@ async function checkForUpdates({ silent }: { silent: boolean }) {
         cancelId: 1,
       })
       if (postDownload === 0) installUpdateAndRestart(dmgPath)
+      else if (silent) dismissedUpdateVersion = latestTag // don't re-download on next auto-check
     } catch (err) {
       console.error('[Updater] Download/install failed:', err)
       tray?.setToolTip('Webflow Access Manager')
@@ -889,9 +912,14 @@ app.on('ready', async () => {
   // Auto-check for updates shortly after launch — packaged builds only (the dev version
   // string isn't a real release). Silent: stays quiet unless an update is actually found.
   if (app.isPackaged) {
+    // Check shortly after launch, then periodically while the app runs, so a long-lived
+    // menu-bar app notices new releases and offers Restart & Update directly.
     setTimeout(() => {
       void checkForUpdates({ silent: true })
     }, 5000)
+    setInterval(() => {
+      void checkForUpdates({ silent: true })
+    }, 3 * 60 * 60 * 1000)
   }
 })
 

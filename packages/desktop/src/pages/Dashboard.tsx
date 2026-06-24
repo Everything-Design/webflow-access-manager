@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAppStore, useAuthStore, useAdminStore } from '@wam/shared'
 import { AccountRow } from '../components/AccountRow'
 import { ClientAccountRow } from '../components/ClientAccountRow'
@@ -42,6 +42,11 @@ export function Dashboard() {
 
   const adminUid = useAdminStore((s) => s.adminUid)
   const isAdmin = currentUser?.id === adminUid
+
+  // Popup's gear button asks us to jump straight to Settings.
+  useEffect(() => {
+    return window.electronAPI?.onShowSettings(() => setShowSettings(true))
+  }, [])
 
   // Activity log = all resolved requests (uncapped), newest first. Members see only
   // their own history; admin sees the full team timeline. .filter() returns fresh
