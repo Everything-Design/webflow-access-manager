@@ -211,6 +211,33 @@ function saveDashboardBounds() {
   }
 }
 
+// ─── Diagnostic logging (writes renderer console + load/crash events to disk) ───
+function debugLogPath() {
+  return path.join(app.getPath('userData'), 'debug.log')
+}
+function debugLog(msg: string) {
+  try {
+    fs.appendFileSync(debugLogPath(), `[${process.uptime().toFixed(1)}s] ${msg}\n`)
+  } catch {
+    // best-effort
+  }
+}
+function attachDebug(wc: Electron.WebContents, name: string) {
+  // Handle both the legacy positional signature and the Electron 35+ event-object form.
+  wc.on('console-message', (e: unknown, level?: unknown, message?: unknown, line?: unknown, sourceId?: unknown) => {
+    const ev = e as { message?: string; level?: unknown; lineNumber?: number; sourceId?: string }
+    const m = ev?.message ?? (message as string) ?? ''
+    const lvl = ev?.level ?? level ?? ''
+    const src = ev?.sourceId ?? (sourceId as string) ?? ''
+    const ln = ev?.lineNumber ?? (line as number) ?? ''
+    debugLog(`[${name}][console:${String(lvl)}] ${m} (${src}:${ln})`)
+  })
+  wc.on('did-fail-load', (_e, code, desc, url) => debugLog(`[${name}][did-fail-load] ${code} ${desc} ${url}`))
+  wc.on('render-process-gone', (_e, details) => debugLog(`[${name}][render-process-gone] ${JSON.stringify(details)}`))
+  wc.on('preload-error', (_e, p, err) => debugLog(`[${name}][preload-error] ${p} ${err?.message}`))
+  wc.on('unresponsive', () => debugLog(`[${name}][unresponsive]`))
+}
+
 function createPopupWindow() {
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
@@ -238,6 +265,8 @@ function createPopupWindow() {
       backgroundThrottling: false,
     },
   })
+
+  attachDebug(popupWindow.webContents, 'popup')
 
   // Show the popup on the CURRENT Space — including over another app's full-screen Space —
   // instead of pulling the user back to the desktop Space the window normally belongs to.
@@ -301,6 +330,8 @@ function createDashboardWindow() {
       backgroundThrottling: false,
     },
   })
+
+  attachDebug(dashboardWindow.webContents, 'dashboard')
 
   // Persist position/size as the user moves or resizes the window.
   dashboardWindow.on('moved', saveDashboardBounds)
@@ -866,14 +897,17 @@ function setupAppMenu() {
 }
 
 app.on('ready', async () => {
+  try { fs.writeFileSync(path.join(app.getPath('userData'), 'debug.log'), `=== launch ${new Date().toISOString()} v${app.getVersion()} ===\n`) } catch { /* ignore */ }
   console.log('[Main] App ready. Dev mode:', isDev)
   console.log('[Main] Dev server URL:', DEV_SERVER_URL)
 
   if (!isDev) {
     try {
       prodServerPort = await startProdServer()
+      debugLog(`prod server listening on port ${prodServerPort}`)
     } catch (err) {
       console.error('[Main] Failed to start prod server — falling back to file://:', err)
+      debugLog(`prod server FAILED: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -882,14 +916,19 @@ app.on('ready', async () => {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const csp =
       "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.googleapis.com https://*.gstatic.com" +
+      // *.firebaseio.com / *.firebasedatabase.app are required for RTDB long-polling, which
+      // injects <script> tags (.lp endpoint) when it can't use a WebSocket. Without these
+      // the DB never connects and the app hangs on the loading spinner.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.googleapis.com https://*.gstatic.com https://*.firebaseio.com https://*.firebasedatabase.app" +
       (isDev ? " 'unsafe-eval' http://localhost:* ws://localhost:*; " : '; ') +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "font-src 'self' data: https://fonts.gstatic.com; " +
       "img-src 'self' data: https: blob:; " +
       "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com" +
       (isDev ? ' http://localhost:* ws://localhost:*; ' : '; ') +
-      "frame-src https://*.firebaseapp.com https://accounts.google.com;"
+      // *.firebasedatabase.app also needed in frame-src: RTDB long-polling loads a hidden
+      // iframe (.lp?dframe=t) from the regional DB host.
+      "frame-src https://*.firebaseapp.com https://accounts.google.com https://*.firebasedatabase.app;"
     callback({
       responseHeaders: {
         ...details.responseHeaders,
