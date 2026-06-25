@@ -22,7 +22,12 @@ import type {
 import { generateId } from '../utils/helpers'
 
 function toTimestamp(val: unknown): number | undefined {
-  if (typeof val === 'number' && val > 0) return val
+  if (typeof val === 'number' && val > 0) {
+    // Normalize accidental millisecond timestamps to seconds. occupiedSince was once
+    // written with Date.now() (ms) while formatDuration expects seconds — anything past
+    // ~1e11 is clearly milliseconds. Heals legacy data on read.
+    return val > 1e11 ? Math.floor(val / 1000) : val
+  }
   return undefined
 }
 
@@ -240,7 +245,7 @@ export async function claimAccount(accountId: string, user: User): Promise<void>
         isOccupied: true,
         occupiedBy: user.id,
         occupiedByName: user.name,
-        occupiedSince: Date.now(),
+        occupiedSince: Math.floor(Date.now() / 1000), // seconds — formatDuration expects seconds
       }
     },
     { applyLocally: false }
